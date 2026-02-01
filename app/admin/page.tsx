@@ -17,10 +17,10 @@ export default function AdminDashboard() {
   const fetchData = async () => {
     try {
       const [userRes, repRes, banRes, statRes] = await Promise.all([
-        fetch("http://localhost:5001/api/admin/active-users"),
-        fetch("http://localhost:5001/api/reports"),
-        fetch("http://localhost:5001/api/bans"),
-        fetch("http://localhost:5001/api/admin/stats")
+        fetch("https://videochat-1-1s2q.onrender.com/api/admin/active-users"),
+        fetch("https://videochat-1-1s2q.onrender.com/api/reports"),
+        fetch("https://videochat-1-1s2q.onrender.com/api/bans"),
+        fetch("https://videochat-1-1s2q.onrender.com/api/admin/stats")
       ]);
 
       if (userRes.ok) setActiveUsers(await userRes.json());
@@ -35,7 +35,7 @@ export default function AdminDashboard() {
   // Seçilen Kullanıcının Geçmişini Çekme
   useEffect(() => {
     if (selectedUser) {
-      fetch(`http://localhost:5001/api/admin/user-logs/${selectedUser.id}`)
+      fetch(`https://videochat-1-1s2q.onrender.com/api/admin/user-logs/${selectedUser.id}`)
         .then(res => res.ok ? res.json() : [])
         .then(data => setUserHistory(data))
         .catch(err => console.error("Geçmiş yüklenemedi:", err));
@@ -161,7 +161,7 @@ export default function AdminDashboard() {
               <button 
                 onClick={() => {
                   if(confirm("Kullanıcı yasaklanacak?")) {
-                    fetch("http://localhost:5001/api/ban-user", {
+                    fetch("https://videochat-1-1s2q.onrender.com/api/ban-user", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ reportedId: selectedUser.id, ip: selectedUser.ip })
@@ -197,7 +197,7 @@ export default function AdminDashboard() {
                     <div className="overflow-hidden">
                       <p className="font-mono text-[9px] font-bold text-blue-400 truncate">ID: {r.reportedId.slice(-6)}</p>
                       <button 
-                        onClick={() => fetch(`http://localhost:5001/api/reports/${r._id}`, {method:'DELETE'}).then(fetchData)}
+                        onClick={() => fetch(`https://videochat-1-1s2q.onrender.com/api/reports/${r._id}`, {method:'DELETE'}).then(fetchData)}
                         className="text-[8px] text-zinc-600 font-black uppercase hover:text-red-500 transition-all"
                       >
                         Sil
@@ -215,7 +215,7 @@ export default function AdminDashboard() {
                   <div key={i} className="p-3 border-b border-zinc-800/50 last:border-0 flex justify-between items-center">
                     <span className="text-[9px] font-mono text-zinc-500">{b.ip}</span>
                     <button 
-                      onClick={() => fetch(`http://localhost:5001/api/bans/${b.ip}`, {method:'DELETE'}).then(fetchData)}
+                      onClick={() => fetch(`https://videochat-1-1s2q.onrender.com/api/bans/${b.ip}`, {method:'DELETE'}).then(fetchData)}
                       className="text-[8px] text-blue-500 font-black hover:text-blue-400"
                     >
                       Kaldır
