@@ -20,7 +20,7 @@ const server = http.createServer(app);
 
 // 1. MONGODB BAĞLANTISI
 // ÖNEMLİ: Yarın burayı MongoDB Atlas adresiyle (process.env.MONGODB_URI) değiştireceğiz
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/videochat';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ahmetcnd:Ahmet263271@videochat.vok6vud.mongodb.net/?appName=videochat';
 
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('✅ MongoDB Bağlantısı Başarılı'))
