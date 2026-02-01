@@ -9,8 +9,8 @@ if (typeof window !== "undefined" && typeof (window as any).global === "undefine
 
 // HTTPS üzerinden bağlandığından emin ol
 // localhost yerine bilgisayarının yerel IP adresini yazmalısın
-const socket = io("https://192.168.1.170:5001", {
-  rejectUnauthorized: false // Kendi ürettiğimiz sertifika olduğu için tarayıcı uyarısını geçmemizi sağlar
+const socket = io("https://videochat-1qxi.onrender.com", {
+  transports: ["websocket"]
 });
 
 export default function Home() {
