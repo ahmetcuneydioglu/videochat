@@ -73,6 +73,20 @@ export default function Home() {
     socket.emit("find_partner", { myGender, searchGender, onlySameCountry });
   };
 
+  const handleReport = () => {
+    if (partnerId) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 160; canvas.height = 120;
+        const ctx = canvas.getContext("2d");
+        if (remoteVideoRef.current) ctx?.drawImage(remoteVideoRef.current, 0, 0, canvas.width, canvas.height);
+        socket.emit("report_user", { targetId: partnerId, screenshot: canvas.toDataURL("image/jpeg", 0.5) });
+        alert("Kullanıcı raporlandı.");
+        handleNext();
+    } else {
+        alert("Raporlanacak bir kullanıcı yok.");
+    }
+  };
+
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputText.trim() && peerRef.current) {
@@ -92,30 +106,40 @@ export default function Home() {
         <h1 className="text-lg font-black italic tracking-tighter text-blue-500">VIDEOCHAT</h1>
         <div className="flex items-center gap-2">
            {partnerCountry && <span className="text-[9px] font-bold bg-zinc-800 px-2 py-1 rounded-full uppercase">🌍 {partnerCountry}</span>}
+           {/* Web İçin Bildir Butonu */}
+           <button onClick={handleReport} className="hidden md:block bg-red-600/20 text-red-500 border border-red-500/20 px-3 py-1 rounded-lg text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all">BİLDİR</button>
         </div>
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         
-        {/* KAMERALAR (Web'de Sabit Sol, Mobilde Full Ekran) */}
+        {/* SOL PANEL (Kameralar) */}
         <div className="w-full md:w-[450px] lg:w-[500px] h-full flex flex-col gap-[1px] bg-black border-r border-zinc-800 relative z-10">
           <div className="flex-1 relative bg-zinc-900 overflow-hidden">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-            <div className="absolute bottom-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase backdrop-blur-sm">Yabancı</div>
+            <div className="absolute bottom-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase">Yabancı</div>
             {isSearching && (
               <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center">
                 <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                <p className="text-[9px] font-black text-blue-500 animate-pulse uppercase tracking-widest">Aranıyor...</p>
+                <p className="text-[9px] font-black text-blue-500 animate-pulse uppercase">Aranıyor...</p>
               </div>
             )}
           </div>
 
           <div className="flex-1 relative bg-zinc-900 overflow-hidden">
             <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
-            <div className="absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase backdrop-blur-sm">Sen</div>
+            <div className="absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase">Sen</div>
 
-            {/* MOBİL OVERLAY KONTROLLER */}
+            {/* MOBİL OVERLAY (NEXT, MESAJ, REPORT) */}
             <div className="md:hidden absolute inset-0 flex flex-col justify-end p-4 pointer-events-none">
+                
+                {/* Rapor Butonu (Mobil Overlay) */}
+                {partnerId && (
+                  <button onClick={handleReport} className="pointer-events-auto self-end mb-2 w-10 h-10 bg-red-600/40 backdrop-blur-md rounded-full flex items-center justify-center border border-red-500/20 text-xs shadow-2xl">
+                    🚩
+                  </button>
+                )}
+
                 <div className="space-y-1 mb-4">
                     {messages.slice(-3).map((m, i) => (
                         <div key={i} className="bg-black/40 backdrop-blur-md px-3 py-1 rounded-xl text-[10px] inline-block border border-white/5">
@@ -123,23 +147,24 @@ export default function Home() {
                         </div>
                     ))}
                 </div>
+
                 <div className="flex items-center gap-2 pointer-events-auto">
-                    <button onClick={handleNext} disabled={isSearching} className="h-12 px-6 bg-white text-black rounded-2xl font-black text-xs uppercase tracking-tighter">NEXT</button>
+                    <button onClick={handleNext} disabled={isSearching} className="h-12 px-6 bg-white text-black rounded-2xl font-black text-xs">NEXT</button>
                     <form onSubmit={sendMessage} className="flex-1 flex gap-1 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-2xl">
-                        <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Mesaj yaz..." className="flex-1 bg-transparent px-3 py-2 text-xs outline-none" />
-                        <button type="submit" className="bg-blue-600 px-4 py-2 rounded-xl text-[10px] font-bold uppercase">GÖNDER</button>
+                        <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Mesaj..." className="flex-1 bg-transparent px-3 py-2 text-xs outline-none" />
+                        <button type="submit" className="bg-blue-600 px-4 py-2 rounded-xl text-[10px] font-bold uppercase">OK</button>
                     </form>
                 </div>
             </div>
           </div>
         </div>
 
-        {/* WEB CHAT ALANI (Chatrandom Stili) */}
+        {/* SAĞ PANEL (Web Chat) */}
         <div className="hidden md:flex flex-1 flex-col bg-white">
           <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-white">
-            <div className="text-center text-[10px] text-zinc-300 font-bold uppercase tracking-[0.3em] py-4 border-b border-zinc-50">Sohbet Başladı</div>
+            <div className="text-center text-[10px] text-zinc-300 font-bold tracking-widest py-4 border-b border-zinc-50 uppercase">Sohbet Odası</div>
             {messages.map((msg, idx) => (
-              <div key={idx} className="flex gap-2">
+              <div key={idx} className="flex gap-2 leading-tight">
                 <span className={`font-black text-[13px] uppercase min-w-[70px] ${msg.sender === "Ben" ? "text-blue-600" : "text-red-600"}`}>{msg.sender}:</span>
                 <span className="text-[14px] font-medium text-zinc-800">{msg.text}</span>
               </div>
@@ -147,40 +172,35 @@ export default function Home() {
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 bg-zinc-50 border-t border-zinc-200 flex items-center gap-4">
-            <button onClick={handleNext} disabled={isSearching} className="bg-black text-white px-10 py-4 rounded-2xl font-black text-sm">NEXT</button>
+            <button onClick={handleNext} disabled={isSearching} className="bg-black text-white px-10 py-4 rounded-2xl font-black text-sm uppercase">NEXT</button>
             <form onSubmit={sendMessage} className="flex-1 flex gap-2">
-                <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Mesaj yaz..." className="flex-1 bg-white border border-zinc-300 p-4 rounded-2xl text-black text-sm outline-none" />
-                <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold">GÖNDER</button>
+                <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Mesaj yaz..." className="flex-1 bg-white border border-zinc-300 p-4 rounded-2xl text-black text-sm" />
+                <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase">GÖNDER</button>
             </form>
           </div>
         </div>
       </main>
 
-      {/* GİRİŞ MODALI (Ayarların Geri Geldiği Hali) */}
+      {/* GİRİŞ MODALI */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-3xl z-[100] flex items-center justify-center p-6">
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-3xl z-[100] flex items-center justify-center p-6 text-center">
             <div className="max-w-xs w-full space-y-6">
-                <h2 className="text-3xl font-black italic tracking-tighter text-blue-500 text-center">VIDEOCHAT</h2>
-                
-                {/* Cinsiyet Seçimi */}
+                <h2 className="text-3xl font-black italic tracking-tighter text-blue-500">VIDEOCHAT</h2>
                 <div className="grid grid-cols-2 gap-3">
                     <button onClick={() => setMyGender("male")} className={`py-4 rounded-2xl font-bold border-2 transition-all ${myGender === "male" ? "bg-blue-600 border-blue-400" : "bg-zinc-900 border-zinc-800"}`}>ERKEK</button>
                     <button onClick={() => setMyGender("female")} className={`py-4 rounded-2xl font-bold border-2 transition-all ${myGender === "female" ? "bg-pink-600 border-pink-400" : "bg-zinc-900 border-zinc-800"}`}>KADIN</button>
                 </div>
-
-                {/* Aranan Cinsiyet & Yerel Mod */}
                 <div className="space-y-3">
                     <select value={searchGender} onChange={(e) => setSearchGender(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-2xl font-bold text-sm outline-none">
-                        <option value="all">HERKESLE EŞLEŞ</option>
-                        <option value="male">ERKEKLERLE EŞLEŞ</option>
-                        <option value="female">KADINLARLA EŞLEŞ</option>
+                        <option value="all">HERKES</option>
+                        <option value="male">ERKEKLER</option>
+                        <option value="female">KADINLAR</option>
                     </select>
-                    <button onClick={() => setOnlySameCountry(!onlySameCountry)} className={`w-full py-4 rounded-2xl font-black text-[10px] tracking-widest border-2 transition-all ${onlySameCountry ? "border-green-500 text-green-500 bg-green-500/10" : "border-zinc-800 text-zinc-600"}`}>
+                    <button onClick={() => setOnlySameCountry(!onlySameCountry)} className={`w-full py-4 rounded-2xl font-black text-[10px] border-2 ${onlySameCountry ? "border-green-500 text-green-500 bg-green-500/10" : "border-zinc-800 text-zinc-600"}`}>
                         {onlySameCountry ? "✓ KENDİ ÜLKEM" : "DÜNYA GENELİ"}
                     </button>
                 </div>
-
-                <button onClick={() => { if(!myGender) return alert("Cinsiyet seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl shadow-2xl">BAŞLAT</button>
+                <button onClick={() => { if(!myGender) return alert("Seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl shadow-2xl">BAŞLAT</button>
             </div>
         </div>
       )}
