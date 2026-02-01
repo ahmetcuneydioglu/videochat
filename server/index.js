@@ -1,37 +1,32 @@
 const express = require('express');
 const cors = require('cors');
-const https = require('https'); 
-const fs = require('fs'); 
-const path = require('path'); // Dosya yolları için eklendi
+const http = require('http'); 
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const geoip = require('geoip-lite');
 
 const app = express();
 
-// CORS Ayarları
+// CORS Ayarları - Canlıda sorun yaşamamak için origin'i Render URL'nizle güncelleyeceğiz
 app.use(cors({
-  origin: ["https://localhost:3000", "https://192.168.1.170:3000"],
+  origin: "*", // Şimdilik her yerden erişime izin veriyoruz (Geliştirme kolaylığı için)
   credentials: true
 }));
 
 app.use(express.json({ limit: '10mb' }));
 
-// --- HTTPS SERTİFİKA AYARLARI (GÜNCELLENDİ) ---
-// path.join(__dirname, ...) kullanarak dosya yolunu garantiliyoruz
-const options = {
-  key: fs.readFileSync(path.join(__dirname, 'certificates', 'localhost-key.pem')),
-  cert: fs.readFileSync(path.join(__dirname, 'certificates', 'localhost.pem'))
-};
-
-const server = https.createServer(options, app);
+// Render/Canlı ortamda HTTPS işini platform halleder, biz standart http oluştururuz
+const server = http.createServer(app);
 
 // 1. MONGODB BAĞLANTISI
-mongoose.connect('mongodb://localhost:27017/videochat')
-  .then(() => console.log('✅ MongoDB Bağlantısı Başarılı (Secure)'))
+// ÖNEMLİ: Yarın burayı MongoDB Atlas adresiyle (process.env.MONGODB_URI) değiştireceğiz
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/videochat';
+
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('✅ MongoDB Bağlantısı Başarılı'))
   .catch(err => console.error('❌ MongoDB Bağlantı Hatası:', err));
 
-// 2. MODELLER
+// 2. MODELLER (Aynı kalıyor)
 const Ban = mongoose.model('Ban', new mongoose.Schema({ 
     ip: String, reason: String, date: { type: Date, default: Date.now } 
 }));
@@ -45,20 +40,21 @@ const Log = mongoose.model('Log', new mongoose.Schema({
 // SOCKET.IO AYARLARI
 const io = new Server(server, {
   cors: {
-    origin: ["https://localhost:3000", "https://192.168.1.170:3000"],
+    origin: "*", 
     methods: ["GET", "POST"],
     credentials: true
   }
 });
 
-// 3. ANLIK TAKİP MERKEZİ
+// 3. ANLIK TAKİP MERKEZİ (Mantık Aynı)
 let globalQueue = [];
 const activeMatches = new Map();
 const matchTimes = new Map();
 const userDetails = new Map();
 
 io.on('connection', async (socket) => {
-  let userIP = socket.handshake.address;
+  // Canlı ortamda proxy IP'sini almak için
+  let userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
   if (userIP === '::1' || userIP === '127.0.0.1') userIP = '176.234.224.0';
   
   const geo = geoip.lookup(userIP);
@@ -66,7 +62,7 @@ io.on('connection', async (socket) => {
 
   userDetails.set(socket.id, {
     id: socket.id,
-    ip: socket.handshake.address,
+    ip: userIP,
     country: countryCode,
     joinedAt: new Date(),
     skips: 0,
@@ -75,7 +71,7 @@ io.on('connection', async (socket) => {
     currentPartner: null
   });
 
-  const isBanned = await Ban.findOne({ ip: socket.handshake.address });
+  const isBanned = await Ban.findOne({ ip: userIP });
   if (isBanned) {
     socket.emit('error_msg', 'Erişiminiz engellenmiştir.');
     return socket.disconnect();
@@ -87,7 +83,7 @@ io.on('connection', async (socket) => {
 
     if (activeMatches.has(socket.id)) {
         const duration = Math.floor((Date.now() - (matchTimes.get(socket.id) || Date.now())) / 1000);
-        new Log({ userId: socket.id, userIP: socket.handshake.address, action: 'SKIPPED', duration }).save();
+        new Log({ userId: socket.id, userIP, action: 'SKIPPED', duration }).save();
     }
 
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
@@ -142,11 +138,11 @@ io.on('connection', async (socket) => {
     try {
       const sockets = await io.fetchSockets();
       const targetSocket = sockets.find(s => s.id === targetId);
-      const targetIP = targetSocket ? targetSocket.handshake.address : "Bilinmiyor";
+      const targetIP = targetSocket ? (targetSocket.handshake.headers['x-forwarded-for'] || targetSocket.handshake.address) : "Bilinmiyor";
       new Report({ reporterId: socket.id, reportedId: targetId, reportedIP: targetIP, screenshot }).save();
       const targetProfile = userDetails.get(targetId);
       if (targetProfile) targetProfile.reports += 1;
-      new Log({ userId: socket.id, userIP: socket.handshake.address, action: 'REPORTED', targetId }).save();
+      new Log({ userId: socket.id, userIP, action: 'REPORTED', targetId }).save();
     } catch (err) { console.error(err); }
   });
 
@@ -176,7 +172,8 @@ app.get('/api/admin/stats', async (req, res) => {
     res.json(stats);
 });
 
-// Server Başlatma
-server.listen(5001, "0.0.0.0", () => {
-    console.log('🚀 Güvenli Komuta Merkezi (HTTPS) 5001 portunda aktif.');
+// Portu Render'ın insafına bırakıyoruz
+const PORT = process.env.PORT || 5001;
+server.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Sunucu ${PORT} portunda yayında.`);
 });
