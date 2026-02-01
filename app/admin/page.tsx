@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 // --- KRİTİK AYAR: BACKEND URL ---
 // Buradaki linki Render'daki backend (Web Service) URL'n ile değiştir!
-const BACKEND_URL = "https://videochat-1-1s2q.onrender.com"; 
+const BACKEND_URL = "https://videochat-1qxi.onrender.com"; 
 
 export default function AdminDashboard() {
   const [password, setPassword] = useState("");
