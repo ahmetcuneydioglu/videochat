@@ -1,5 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+// --- KRİTİK AYAR: BACKEND URL ---
+// Buradaki linki Render'daki backend (Web Service) URL'n ile değiştir!
+const BACKEND_URL = "https://videochat-1-1s2q.onrender.com"; 
 
 export default function AdminDashboard() {
   const [password, setPassword] = useState("");
@@ -13,14 +17,14 @@ export default function AdminDashboard() {
   const [userHistory, setUserHistory] = useState<any[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  // Verileri Çekme Fonksiyonu
+  // Verileri Çekme Fonksiyonu - URL'ler Güncellendi
   const fetchData = async () => {
     try {
       const [userRes, repRes, banRes, statRes] = await Promise.all([
-        fetch("https://videochat-1-1s2q.onrender.com/api/admin/active-users"),
-        fetch("https://videochat-1-1s2q.onrender.com/api/reports"),
-        fetch("https://videochat-1-1s2q.onrender.com/api/bans"),
-        fetch("https://videochat-1-1s2q.onrender.com/api/admin/stats")
+        fetch(`${BACKEND_URL}/api/admin/active-users`),
+        fetch(`${BACKEND_URL}/api/reports`),
+        fetch(`${BACKEND_URL}/api/bans`),
+        fetch(`${BACKEND_URL}/api/admin/stats`)
       ]);
 
       if (userRes.ok) setActiveUsers(await userRes.json());
@@ -32,10 +36,10 @@ export default function AdminDashboard() {
     }
   };
 
-  // Seçilen Kullanıcının Geçmişini Çekme
+  // Seçilen Kullanıcının Geçmişini Çekme - URL Güncellendi
   useEffect(() => {
     if (selectedUser) {
-      fetch(`https://videochat-1-1s2q.onrender.com/api/admin/user-logs/${selectedUser.id}`)
+      fetch(`${BACKEND_URL}/api/admin/user-logs/${selectedUser.id}`)
         .then(res => res.ok ? res.json() : [])
         .then(data => setUserHistory(data))
         .catch(err => console.error("Geçmiş yüklenemedi:", err));
@@ -50,7 +54,7 @@ export default function AdminDashboard() {
     }
   }, [isLoggedIn]);
 
-  // Giriş Ekranı
+  // Giriş Ekranı (Şifreyi admin123 olarak bıraktım)
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center p-4">
@@ -161,7 +165,7 @@ export default function AdminDashboard() {
               <button 
                 onClick={() => {
                   if(confirm("Kullanıcı yasaklanacak?")) {
-                    fetch("https://videochat-1-1s2q.onrender.com/api/ban-user", {
+                    fetch(`${BACKEND_URL}/api/ban-user`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ reportedId: selectedUser.id, ip: selectedUser.ip })
@@ -195,9 +199,9 @@ export default function AdminDashboard() {
                       />
                     )}
                     <div className="overflow-hidden">
-                      <p className="font-mono text-[9px] font-bold text-blue-400 truncate">ID: {r.reportedId.slice(-6)}</p>
+                      <p className="font-mono text-[9px] font-bold text-blue-400 truncate">ID: {r.reportedId?.slice(-6)}</p>
                       <button 
-                        onClick={() => fetch(`https://videochat-1-1s2q.onrender.com/api/reports/${r._id}`, {method:'DELETE'}).then(fetchData)}
+                        onClick={() => fetch(`${BACKEND_URL}/api/reports/${r._id}`, {method:'DELETE'}).then(fetchData)}
                         className="text-[8px] text-zinc-600 font-black uppercase hover:text-red-500 transition-all"
                       >
                         Sil
@@ -215,7 +219,7 @@ export default function AdminDashboard() {
                   <div key={i} className="p-3 border-b border-zinc-800/50 last:border-0 flex justify-between items-center">
                     <span className="text-[9px] font-mono text-zinc-500">{b.ip}</span>
                     <button 
-                      onClick={() => fetch(`https://videochat-1-1s2q.onrender.com/api/bans/${b.ip}`, {method:'DELETE'}).then(fetchData)}
+                      onClick={() => fetch(`${BACKEND_URL}/api/bans/${b.ip}`, {method:'DELETE'}).then(fetchData)}
                       className="text-[8px] text-blue-500 font-black hover:text-blue-400"
                     >
                       Kaldır

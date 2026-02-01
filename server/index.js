@@ -172,6 +172,28 @@ app.get('/api/admin/stats', async (req, res) => {
     res.json(stats);
 });
 
+// --- ADMIN ROTALARI EKLEMELER ---
+app.get('/api/reports', async (req, res) => {
+    const reports = await Report.find().sort({ date: -1 });
+    res.json(reports);
+});
+
+app.get('/api/bans', async (req, res) => {
+    const bans = await Ban.find().sort({ date: -1 });
+    res.json(bans);
+});
+
+// Rapor silme ve Ban kaldırma için de şunları ekleyebilirsin:
+app.delete('/api/reports/:id', async (req, res) => {
+    await Report.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+});
+
+app.delete('/api/bans/:ip', async (req, res) => {
+    await Ban.findOneAndDelete({ ip: req.params.ip });
+    res.json({ success: true });
+});
+
 // Portu Render'ın insafına bırakıyoruz
 const PORT = process.env.PORT || 5001;
 server.listen(PORT, "0.0.0.0", () => {
