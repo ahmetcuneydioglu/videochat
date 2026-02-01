@@ -7,8 +7,6 @@ if (typeof window !== "undefined" && typeof (window as any).global === "undefine
   (window as any).global = window;
 }
 
-// HTTPS üzerinden bağlandığından emin ol
-// localhost yerine bilgisayarının yerel IP adresini yazmalısın
 const socket = io("https://videochat-1qxi.onrender.com/", {
   transports: ["websocket"],
   secure: true
@@ -39,7 +37,6 @@ export default function Home() {
   const [recentPartners, setRecentPartners] = useState<{id: string, screenshot: string}[]>([]);
   const [showReportModal, setShowReportModal] = useState(false);
 
-  // Mount kontrolü - Hydration hatalarını önlemek için şart
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -48,7 +45,6 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Partner değiştiğinde videoyu mobilde oynatmak için tetikleyici
   useEffect(() => {
     if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
       remoteVideoRef.current.play().catch(e => console.error("Video oynatma hatası:", e));
@@ -59,11 +55,7 @@ export default function Home() {
     async function startCamera() {
       if (streamRef.current) return;
       try {
-        // navigator.mediaDevices kontrolü (Güvenli bağlam/SSL kontrolü)
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            console.error("Kamera erişimi için HTTPS veya localhost gereklidir.");
-            return;
-        }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
         const userStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         streamRef.current = userStream;
         if (localVideoRef.current) localVideoRef.current.srcObject = userStream;
@@ -74,7 +66,6 @@ export default function Home() {
 
     socket.on("banned", () => setIsBanned(true));
     socket.on("waiting_msg", (msg) => setWaitingStatus(msg));
-
     socket.on("partner_found", (data) => {
       if (partnerId && remoteVideoRef.current) captureAndSavePartner(partnerId);
       setMessages([]);
@@ -83,7 +74,6 @@ export default function Home() {
       setIsSearching(false);
       initiatePeer(data.partnerId, data.initiator);
     });
-
     socket.on("partner_disconnected", () => {
       if (peerRef.current) peerRef.current.destroy();
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
@@ -91,7 +81,6 @@ export default function Home() {
       setPartnerId(null);
       setPartnerCountry(null);
     });
-
     socket.on("signal", (data) => {
       if (peerRef.current && !(peerRef.current as any).destroyed) {
         peerRef.current.signal(data.signal);
@@ -99,11 +88,8 @@ export default function Home() {
     });
 
     return () => {
-      socket.off("banned");
-      socket.off("waiting_msg");
-      socket.off("partner_found");
-      socket.off("partner_disconnected");
-      socket.off("signal");
+      socket.off("banned"); socket.off("waiting_msg"); socket.off("partner_found");
+      socket.off("partner_disconnected"); socket.off("signal");
     };
   }, [partnerId, isMounted]);
 
@@ -114,7 +100,6 @@ export default function Home() {
     const ctx = canvas.getContext("2d");
     ctx?.drawImage(remoteVideoRef.current, 0, 0, canvas.width, canvas.height);
     const snap = canvas.toDataURL("image/jpeg", 0.4);
-
     setRecentPartners(prev => {
       if (prev.find(p => p.id === id)) return prev;
       return [{ id, screenshot: snap }, ...prev].slice(0, 3);
@@ -123,16 +108,9 @@ export default function Home() {
 
   function initiatePeer(targetId: string, initiator: boolean) {
     if (!streamRef.current) return;
-    const peer = new Peer({
-      initiator: initiator,
-      trickle: false,
-      stream: streamRef.current,
-    });
-
+    const peer = new Peer({ initiator, trickle: false, stream: streamRef.current });
     peer.on("signal", (data) => socket.emit("signal", { to: targetId, signal: data }));
-    peer.on("stream", (remStream) => {
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remStream;
-    });
+    peer.on("stream", (remStream) => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remStream; });
     peer.on("data", (data) => {
       const msg = new TextDecoder().decode(data);
       setMessages((prev) => [...prev, { sender: "Yabancı", text: msg }]);
@@ -140,19 +118,12 @@ export default function Home() {
     peerRef.current = peer;
   }
 
-  const handleStart = () => {
-    if (!myGender) return alert("Cinsiyet seçin!");
-    setShowModal(false);
-    handleNext();
-  };
-
+  const handleStart = () => { if (!myGender) return alert("Cinsiyet seçin!"); setShowModal(false); handleNext(); };
   const handleNext = () => {
     if (partnerId) captureAndSavePartner(partnerId);
     if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    setPartnerId(null);
-    setPartnerCountry(null);
-    setIsSearching(true);
+    setPartnerId(null); setPartnerCountry(null); setIsSearching(true);
     socket.emit("find_partner", { myGender, searchGender, onlySameCountry });
   };
 
@@ -165,122 +136,129 @@ export default function Home() {
     }
   };
 
-  if (isBanned) return (
-    <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-white uppercase font-black italic">
-      <h1 className="text-4xl mb-4">Erişim Engellendi</h1>
-    </div>
-  );
+  if (isBanned) return <div className="min-h-screen bg-black flex items-center justify-center text-white"><h1>Erişim Engellendi</h1></div>;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col font-sans overflow-hidden">
+    <div className="h-screen bg-[#121212] text-white flex flex-col font-sans overflow-hidden">
       
-      {/* Rapor Modalı */}
-      {showReportModal && (
-        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center p-4">
-          <h2 className="text-2xl font-black mb-10 italic uppercase tracking-tighter">Kötüye Kullanımı Bildir</h2>
-          <div className="flex gap-5 mb-12 flex-wrap justify-center">
-            {recentPartners.length > 0 ? recentPartners.map((p, i) => (
-              <div key={i} className="group relative">
-                <div 
-                  onClick={() => {
-                    socket.emit("report_user", { targetId: p.id, screenshot: p.screenshot });
-                    alert("Kullanıcı raporlandı.");
-                    setRecentPartners(prev => prev.filter(item => item.id !== p.id));
-                    if (recentPartners.length === 1) setShowReportModal(false);
-                  }}
-                  className="w-36 h-48 bg-zinc-900 rounded-[30px] overflow-hidden border-2 border-zinc-800 hover:border-red-600 cursor-pointer shadow-2xl relative"
-                >
-                  <img src={p.screenshot} className="w-full h-full object-cover" alt="partner" />
-                </div>
-              </div>
-            )) : <p className="text-zinc-600 font-bold uppercase">Geçmiş Yok</p>}
-          </div>
-          <button onClick={() => setShowReportModal(false)} className="bg-zinc-800 px-12 py-4 rounded-2xl font-black uppercase text-xs">Kapat</button>
+      {/* Üst Bar */}
+      <header className="h-14 border-b border-zinc-800 flex items-center justify-between px-6 bg-zinc-900/50 backdrop-blur-md">
+        <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+            <h1 className="text-xl font-black italic tracking-tighter">VIDEOCHAT</h1>
         </div>
-      )}
-
-      {/* Giriş Modalı */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-[40px] max-w-md w-full">
-            <h2 className="text-3xl font-black mb-8 italic text-center uppercase tracking-tighter">Ayarlar</h2>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => setMyGender("male")} className={`py-4 rounded-2xl font-bold ${myGender === "male" ? "bg-blue-600" : "bg-zinc-800"}`}>ERKEK</button>
-                <button onClick={() => setMyGender("female")} className={`py-4 rounded-2xl font-bold ${myGender === "female" ? "bg-pink-600" : "bg-zinc-800"}`}>KADIN</button>
-              </div>
-              
-              {/* Hydration Hatası Çözümü (Select) */}
-              {isMounted ? (
-                  <select value={searchGender} onChange={(e) => setSearchGender(e.target.value)} className="w-full bg-zinc-800 p-4 rounded-2xl font-bold outline-none border border-zinc-700">
-                    <option value="all">HERKES</option>
-                    <option value="male">ERKEKLER</option>
-                    <option value="female">KADINLAR</option>
-                  </select>
-              ) : <div className="w-full h-[58px] bg-zinc-800 rounded-2xl animate-pulse" />}
-
-              <button onClick={() => setOnlySameCountry(!onlySameCountry)} className={`w-full py-4 rounded-2xl font-black text-[10px] tracking-widest border-2 ${onlySameCountry ? "border-green-500 text-green-500 bg-green-500/5" : "border-zinc-800 text-zinc-500"}`}>
-                {onlySameCountry ? "✓ YEREL MOD" : "KÜRESEL MOD"}
-              </button>
-              <button onClick={handleStart} className="w-full bg-blue-600 py-5 rounded-3xl font-black text-xl shadow-xl">BAŞLAT</button>
-            </div>
-          </div>
+        <div className="flex items-center gap-4">
+           {partnerCountry && <span className="text-[10px] font-bold bg-zinc-800 px-3 py-1 rounded-full uppercase text-zinc-400">🌍 {partnerCountry}</span>}
+           <button onClick={() => setShowReportModal(true)} className="text-[10px] font-black text-red-500 hover:bg-red-500/10 px-3 py-1 rounded-lg border border-red-500/20 uppercase transition-all">Bildir</button>
         </div>
-      )}
+      </header>
 
-      <main className="flex-1 flex flex-col md:flex-row p-4 gap-4 max-w-7xl mx-auto w-full overflow-hidden">
-        <div className="flex-[3] grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="relative bg-zinc-900 rounded-[35px] overflow-hidden border border-zinc-800 shadow-2xl">
-            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
-            <div className="absolute top-4 left-4 bg-black/40 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md">Sen</div>
-          </div>
-
-          <div className="relative bg-zinc-900 rounded-[35px] overflow-hidden border border-zinc-800 shadow-2xl flex items-center justify-center">
+      <main className="flex-1 flex overflow-hidden">
+        
+        {/* SOL: DİKEY KAMERALAR */}
+        <div className="w-[320px] md:w-[420px] lg:w-[480px] flex flex-col gap-1 p-1 bg-black border-r border-zinc-800">
+          {/* Partner */}
+          <div className="flex-1 relative bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800 shadow-inner">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-            {partnerId && (
-              <button onClick={() => setShowReportModal(true)} className="absolute top-4 right-4 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white px-4 py-2 rounded-xl text-[10px] font-black border border-red-600/30 uppercase">Bildir</button>
-            )}
+            <div className="absolute bottom-3 left-3 bg-black/60 px-2 py-1 rounded text-[9px] font-bold uppercase tracking-widest backdrop-blur-sm">Yabancı</div>
             {isSearching && (
-              <div className="absolute inset-0 bg-zinc-950/90 flex flex-col items-center justify-center p-6 text-center">
-                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-6"></div>
-                <p className="text-[10px] font-black text-blue-500 tracking-[0.4em] uppercase animate-pulse">{waitingStatus}</p>
+              <div className="absolute inset-0 bg-zinc-950/95 flex flex-col items-center justify-center p-6 text-center">
+                <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p className="text-[9px] font-black text-blue-500 tracking-[0.3em] uppercase animate-pulse">{waitingStatus}</p>
               </div>
             )}
           </div>
+          {/* Sen */}
+          <div className="flex-1 relative bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800">
+            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
+            <div className="absolute bottom-3 left-3 bg-black/60 px-2 py-1 rounded text-[9px] font-bold uppercase tracking-widest backdrop-blur-sm">Sen</div>
+          </div>
         </div>
 
-        <div className="flex-1 bg-zinc-900/50 rounded-[35px] border border-zinc-800 flex flex-col overflow-hidden backdrop-blur-md shadow-2xl">
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+        {/* SAĞ: CHAT ALANI (BEYAZ TEMA) */}
+        <div className="flex-1 flex flex-col bg-white text-black relative">
+          <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+            <div className="text-center text-[10px] text-zinc-400 font-bold uppercase tracking-widest border-b border-zinc-100 pb-4 mb-4">
+              Sohbet odasına bağlandınız
+            </div>
             {messages.map((msg, idx) => (
-              <div key={idx} className={`flex flex-col ${msg.sender === userName ? "items-end" : "items-start"}`}>
-                <div className={`px-4 py-2 rounded-2xl text-[13px] font-medium ${msg.sender === userName ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-300"}`}>{msg.text}</div>
+              <div key={idx} className="flex gap-2 items-start leading-tight">
+                <span className={`font-black text-[13px] uppercase min-w-[60px] ${msg.sender === userName ? "text-blue-600" : "text-red-600"}`}>
+                  {msg.sender}:
+                </span>
+                <span className="text-[14px] font-medium text-zinc-800">{msg.text}</span>
               </div>
             ))}
             <div ref={chatEndRef} />
           </div>
 
-          {/* Hydration Hatası Çözümü (Form & Input) */}
-          <div className="p-4 bg-zinc-950/50">
+          {/* Alt Kontroller */}
+          <div className="p-4 bg-zinc-50 border-t border-zinc-200 flex items-center gap-3">
+            <button 
+              onClick={handleNext} 
+              disabled={isSearching}
+              className="bg-zinc-900 text-white px-8 py-4 rounded-xl font-black text-sm hover:bg-black transition-all uppercase tracking-tighter disabled:opacity-50"
+            >
+              {isSearching ? "..." : "SIRADAKİ"}
+            </button>
+            
             {isMounted ? (
-              <form onSubmit={sendMessage}>
+              <form onSubmit={sendMessage} className="flex-1 flex gap-2">
                 <input 
                   value={inputText} 
                   onChange={(e) => setInputText(e.target.value)} 
                   type="text" 
-                  placeholder="Mesaj yaz..." 
-                  className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-2xl outline-none text-xs focus:border-blue-600 transition-all" 
+                  placeholder="Mesaj gönder..." 
+                  className="flex-1 bg-white border border-zinc-300 p-4 rounded-xl outline-none text-sm focus:border-blue-500 transition-all shadow-sm" 
                 />
+                <button type="submit" className="bg-blue-600 text-white px-6 py-4 rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-md">GÖNDER</button>
               </form>
-            ) : <div className="w-full h-[50px] bg-zinc-900 rounded-2xl animate-pulse" />}
+            ) : <div className="flex-1 h-[56px] bg-zinc-100 rounded-xl animate-pulse" />}
           </div>
         </div>
       </main>
 
-      <footer className="p-8 flex justify-center bg-zinc-950">
-        <button onClick={handleNext} disabled={isSearching} className="bg-white text-black px-24 py-5 rounded-[28px] font-black text-xl hover:bg-zinc-200 transition-all disabled:bg-zinc-800 uppercase tracking-tighter shadow-2xl">
-          {isSearching ? "Bekleyin" : "Sıradaki"}
-        </button>
-      </footer>
+      {/* Rapor Modalı */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4">
+          <h2 className="text-xl font-black mb-8 italic uppercase tracking-tighter">Kötüye Kullanımı Bildir</h2>
+          <div className="flex gap-4 mb-10">
+            {recentPartners.map((p, i) => (
+              <div key={i} onClick={() => { socket.emit("report_user", { targetId: p.id, screenshot: p.screenshot }); alert("Raporlandı"); setShowReportModal(false); }}
+                className="w-28 h-36 bg-zinc-900 rounded-2xl overflow-hidden border-2 border-zinc-800 hover:border-red-600 cursor-pointer shadow-2xl">
+                <img src={p.screenshot} className="w-full h-full object-cover" />
+              </div>
+            ))}
+          </div>
+          <button onClick={() => setShowReportModal(false)} className="bg-zinc-800 px-10 py-3 rounded-xl font-black uppercase text-[10px]">İptal</button>
+        </div>
+      )}
+
+      {/* Ayarlar Modalı */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-2xl z-[100] flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-[40px] max-w-sm w-full shadow-2xl">
+            <h2 className="text-2xl font-black mb-8 italic text-center uppercase tracking-tighter">Sohbet Ayarları</h2>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setMyGender("male")} className={`py-4 rounded-2xl font-bold transition-all ${myGender === "male" ? "bg-blue-600 shadow-lg shadow-blue-600/20" : "bg-zinc-800"}`}>ERKEK</button>
+                <button onClick={() => setMyGender("female")} className={`py-4 rounded-2xl font-bold transition-all ${myGender === "female" ? "bg-pink-600 shadow-lg shadow-pink-600/20" : "bg-zinc-800"}`}>KADIN</button>
+              </div>
+              {isMounted && (
+                <select value={searchGender} onChange={(e) => setSearchGender(e.target.value)} className="w-full bg-zinc-800 p-4 rounded-2xl font-bold outline-none border border-zinc-700">
+                  <option value="all">HERKES</option>
+                  <option value="male">ERKEKLER</option>
+                  <option value="female">KADINLAR</option>
+                </select>
+              )}
+              <button onClick={() => setOnlySameCountry(!onlySameCountry)} className={`w-full py-3 rounded-2xl font-black text-[9px] tracking-widest border-2 transition-all ${onlySameCountry ? "border-green-500 text-green-500 bg-green-500/5" : "border-zinc-800 text-zinc-600"}`}>
+                {onlySameCountry ? "✓ KENDİ ÜLKEM" : "DÜNYA GENELİ"}
+              </button>
+              <button onClick={handleStart} className="w-full bg-blue-600 py-5 rounded-3xl font-black text-xl shadow-xl hover:bg-blue-500 transition-all">BAŞLAT</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
