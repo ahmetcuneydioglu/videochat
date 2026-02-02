@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import Peer from "simple-peer";
 
-// Global tanımlamalar
 if (typeof window !== "undefined" && typeof (window as any).global === "undefined") {
   (window as any).global = window;
 }
@@ -18,7 +17,6 @@ export default function Home() {
   const peerRef = useRef<Peer.Instance | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Swipe ve İpucu State'leri
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
   const [showSwipeHint, setShowSwipeHint] = useState(false);
@@ -35,16 +33,15 @@ export default function Home() {
 
   useEffect(() => {
     setIsMounted(true);
-    // Daha önce swipe yapmış mı kontrol et
-    const hasSwiped = localStorage.getItem("hasSwipedBefore");
-    if (!hasSwiped) {
-      setShowSwipeHint(true);
+    // Masaüstünde ipucunu hiç gösterme, sadece mobilde localStorage kontrol et
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      const hasSwiped = localStorage.getItem("hasSwipedBefore");
+      if (!hasSwiped) setShowSwipeHint(true);
     }
   }, []);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  // Socket ve Peer mantığı (Önceki stabil yapı)
   useEffect(() => {
     async function startCamera() {
       try {
@@ -69,7 +66,7 @@ export default function Home() {
     return () => { socket.off("partner_found"); socket.off("partner_disconnected"); socket.off("signal"); };
   }, [isMounted, partnerId]);
 
-  // SWIPE DEDEKTÖRÜ & İPUCU GİZLEME
+  // SWIPE DEDEKTÖRÜ
   const onTouchStart = (e: React.TouchEvent) => {
     touchEndX.current = null;
     touchStartX.current = e.targetTouches[0].clientX;
@@ -79,7 +76,6 @@ export default function Home() {
     if (!touchStartX.current || !touchEndX.current) return;
     const distance = touchStartX.current - touchEndX.current;
     if (distance > 50 && !isSearching) {
-      // Başarılı swipe: İpucunu kaldır ve kaydet
       if (showSwipeHint) {
         setShowSwipeHint(false);
         localStorage.setItem("hasSwipedBefore", "true");
@@ -138,15 +134,14 @@ export default function Home() {
       onTouchEnd={onTouchEnd}
     >
       
-      {/* SWIPE İPUCU (Sadece Mobilde ve İlk Kez Girenlere) */}
+      {/* SWIPE İPUCU - Sadece Mobilde (md:hidden) */}
       {showSwipeHint && !showModal && !isSearching && partnerId && (
         <div className="md:hidden fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/40 pointer-events-none">
           <div className="flex flex-col items-center animate-pulse">
             <div className="relative w-20 h-20">
-               {/* El İkonu Animasyonu */}
                <span className="text-5xl absolute animate-[swipe_2s_infinite]">👈</span>
             </div>
-            <p className="mt-8 text-xs font-black tracking-[0.2em] uppercase bg-blue-600 px-4 py-2 rounded-full shadow-2xl">
+            <p className="mt-8 text-[10px] font-black tracking-[0.2em] uppercase bg-blue-600 px-4 py-2 rounded-full shadow-2xl">
               Sıradaki İçin Kaydır
             </p>
           </div>
@@ -167,6 +162,7 @@ export default function Home() {
         <div className="w-full md:w-[450px] lg:w-[500px] h-full flex flex-col gap-[1px] bg-black border-r border-zinc-800 relative z-10">
           <div className="flex-1 relative bg-zinc-900 overflow-hidden">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+            <div className="absolute bottom-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase">Yabancı</div>
             {isSearching && (
               <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center">
                 <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -177,6 +173,9 @@ export default function Home() {
 
           <div className="flex-1 relative bg-zinc-900 overflow-hidden">
             <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
+            <div className="absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase">Sen</div>
+
+            {/* MOBİL OVERLAY */}
             <div className="md:hidden absolute inset-0 flex flex-col justify-end p-4 pointer-events-none">
                 {partnerId && (
                   <button onClick={handleReport} className="pointer-events-auto self-end mb-2 w-10 h-10 bg-red-600/40 backdrop-blur-md rounded-full flex items-center justify-center border border-red-500/20 text-xs">🚩</button>
@@ -192,7 +191,7 @@ export default function Home() {
                     <button onClick={handleNext} disabled={isSearching} className="h-12 px-6 bg-white text-black rounded-2xl font-black text-xs">NEXT</button>
                     <form onSubmit={sendMessage} className="flex-1 flex gap-1 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-2xl">
                         <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Mesaj..." className="flex-1 bg-transparent px-3 py-2 text-xs outline-none" />
-                        <button type="submit" className="bg-blue-600 px-4 py-2 rounded-xl text-[10px] font-bold">OK</button>
+                        <button type="submit" className="bg-blue-600 px-4 py-2 rounded-xl text-[10px] font-bold uppercase">OK</button>
                     </form>
                 </div>
             </div>
@@ -211,10 +210,10 @@ export default function Home() {
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 bg-zinc-50 border-t border-zinc-200 flex items-center gap-4">
-            <button onClick={handleNext} disabled={isSearching} className="bg-black text-white px-10 py-4 rounded-2xl font-black text-sm">NEXT</button>
+            <button onClick={handleNext} disabled={isSearching} className="bg-black text-white px-10 py-4 rounded-2xl font-black text-sm uppercase">NEXT</button>
             <form onSubmit={sendMessage} className="flex-1 flex gap-2">
-                <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Mesaj yaz..." className="flex-1 bg-white border border-zinc-300 p-4 rounded-2xl text-black text-sm" />
-                <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold">GÖNDER</button>
+                <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Mesaj yaz..." className="flex-1 bg-white border border-zinc-300 p-4 rounded-2xl text-black text-sm outline-none" />
+                <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase">GÖNDER</button>
             </form>
           </div>
         </div>
@@ -235,16 +234,15 @@ export default function Home() {
                         <option value="male">ERKEKLER</option>
                         <option value="female">KADINLAR</option>
                     </select>
-                    <button onClick={() => setOnlySameCountry(!onlySameCountry)} className={`w-full py-4 rounded-2xl font-black text-[10px] border-2 ${onlySameCountry ? "border-green-500 text-green-500" : "border-zinc-800 text-zinc-600"}`}>
+                    <button onClick={() => setOnlySameCountry(!onlySameCountry)} className={`w-full py-4 rounded-2xl font-black text-[10px] border-2 ${onlySameCountry ? "border-green-500 text-green-500 bg-green-500/10" : "border-zinc-800 text-zinc-600"}`}>
                         {onlySameCountry ? "✓ KENDİ ÜLKEM" : "DÜNYA GENELİ"}
                     </button>
                 </div>
-                <button onClick={() => { if(!myGender) return alert("Seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl uppercase">BAŞLAT</button>
+                <button onClick={() => { if(!myGender) return alert("Seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl uppercase shadow-2xl">BAŞLAT</button>
             </div>
         </div>
       )}
 
-      {/* Animasyon CSS'i */}
       <style jsx global>{`
         @keyframes swipe {
           0% { transform: translateX(50px); opacity: 0; }
