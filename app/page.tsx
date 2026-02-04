@@ -36,7 +36,6 @@ export default function Home() {
 
   useEffect(() => {
     setIsMounted(true);
-    // Mobildeysen ve daha önce kaydırmadıysan ipucunu hazırla
     if (typeof window !== "undefined" && window.innerWidth < 768) {
         const hasSwiped = localStorage.getItem("hasSwipedBefore");
         if (!hasSwiped) setShowSwipeHint(true);
@@ -111,7 +110,6 @@ export default function Home() {
     }
   };
 
-  // SWIPE DEDEKTÖRÜ (Gelişmiş)
   const onTouchStart = (e: React.TouchEvent) => {
     touchEndX.current = null;
     touchStartX.current = e.targetTouches[0].clientX;
@@ -120,14 +118,11 @@ export default function Home() {
   const onTouchEnd = () => {
     if (!touchStartX.current || !touchEndX.current) return;
     const distance = touchStartX.current - touchEndX.current;
-    
-    // Swipe algılandığında (70px mesafe)
     if (distance > 70 && !isSearching) {
         if (showSwipeHint) {
             setShowSwipeHint(false);
             localStorage.setItem("hasSwipedBefore", "true");
         }
-        // Eğer input açıksa kapat ve geç
         if (isMobileInputActive) setIsMobileInputActive(false);
         handleNext();
     }
@@ -147,13 +142,14 @@ export default function Home() {
             <div className="relative w-24 h-24 mb-6">
                <span className="text-6xl absolute animate-[swipe_2s_infinite]">👈</span>
             </div>
-            <p className="text-xs font-black tracking-widest uppercase bg-blue-600 px-6 py-3 rounded-full shadow-2xl">
-              Değiştirmek için kaydır
+            <p className="text-xs font-black tracking-widest uppercase bg-blue-600 px-6 py-3 rounded-full shadow-2xl text-white">
+              Sıradaki için kaydır
             </p>
           </div>
         </div>
       )}
 
+      {/* WEB HEADER */}
       <header className="hidden md:flex h-12 border-b border-zinc-800 items-center justify-between px-4 bg-zinc-900/50 backdrop-blur-md z-[100]">
         <h1 className="text-lg font-black italic tracking-tighter text-blue-500 uppercase">OMEGPT</h1>
         <div className="flex items-center gap-2">
@@ -163,9 +159,9 @@ export default function Home() {
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        {/* KAMERALAR */}
         <div className="flex-1 flex flex-col md:w-[500px] lg:w-[600px] h-full bg-black md:border-r border-zinc-800 relative z-10">
           
+          {/* Üst Kamera: Yabancı */}
           <div className="flex-1 relative overflow-hidden bg-zinc-900 border-b border-white/5">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
             <div className="md:hidden absolute top-4 left-4 z-50">
@@ -174,12 +170,13 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Alt Kamera: Sen */}
           <div className="flex-1 relative overflow-hidden bg-zinc-900">
             <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
             <div className="absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase z-20">Sen</div>
 
             {/* MESAJ AKIŞI */}
-            <div className="md:hidden absolute bottom-24 left-4 right-24 z-40 flex flex-col justify-end max-h-[180px] overflow-y-auto pointer-events-auto no-scrollbar scroll-smooth">
+            <div className="md:hidden absolute bottom-24 left-4 right-20 z-40 flex flex-col justify-end max-h-[160px] overflow-y-auto pointer-events-auto no-scrollbar scroll-smooth">
                 <div className="flex flex-col gap-1.5 p-2">
                     {messages.map((m, i) => (
                         <div key={i} className="bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-2xl text-[12px] border border-white/5 w-fit max-w-full break-words shadow-lg animate-in slide-in-from-left-2">
@@ -190,49 +187,49 @@ export default function Home() {
                 </div>
             </div>
 
-            {/* SAĞ ALT MESAJ İKONU - X Butonu ile birlikte Hizalandı */}
-            <div className="md:hidden absolute bottom-6 right-6 z-50 pointer-events-auto flex flex-col items-center justify-center w-14 h-14">
+            {/* SAĞ ALT MESAJ İKONU - Konum Sabitlendi */}
+            <div className="md:hidden absolute bottom-6 right-4 z-50 pointer-events-auto">
                 {partnerId && (
                     <button 
                         onClick={() => setIsMobileInputActive(!isMobileInputActive)}
-                        className={`w-full h-full rounded-full flex items-center justify-center transition-all shadow-2xl border-2 border-white/10 ${isMobileInputActive ? 'bg-zinc-800' : 'bg-blue-600 active:scale-90'}`}
+                        className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-2xl border-2 border-white/20 ${isMobileInputActive ? 'bg-zinc-800' : 'bg-blue-600 active:scale-90'}`}
                     >
-                        <span className="text-2xl text-white leading-none">{isMobileInputActive ? '✕' : '💬'}</span>
+                        <span className="text-2xl text-white">{isMobileInputActive ? '✕' : '💬'}</span>
                     </button>
                 )}
             </div>
 
-            {/* MOBİL INPUT */}
+            {/* MOBİL INPUT - Sağdan Boşluk Artırıldı */}
             {isMobileInputActive && (
-                <div className="md:hidden absolute bottom-6 left-4 right-24 z-50 animate-in slide-in-from-bottom-2 duration-200">
-                    <form onSubmit={sendMessage} className="flex bg-black/85 backdrop-blur-2xl border border-white/20 p-1.5 rounded-full shadow-2xl">
+                <div className="md:hidden absolute bottom-6 left-4 right-20 z-50 animate-in slide-in-from-bottom-2 duration-200">
+                    <form onSubmit={sendMessage} className="flex bg-black/85 backdrop-blur-2xl border border-white/20 p-1 rounded-full shadow-2xl overflow-hidden">
                         <input 
                             autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Yaz..." 
                             className="flex-1 bg-transparent px-4 py-2 text-sm outline-none text-white w-full" 
                         />
-                        <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"> ➤ </button>
+                        <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mr-1"> ➤ </button>
                     </form>
                 </div>
             )}
           </div>
         </div>
 
-        {/* WEB CHAT PANELİ - Eski stabil görünümüne döndürüldü */}
+        {/* WEB CHAT PANELİ */}
         <div className="hidden md:flex flex-1 flex-col bg-white border-l border-zinc-200">
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {messages.map((msg, idx) => (
-              <div key={idx} className="flex gap-2 text-sm">
+              <div key={idx} className="flex gap-2 text-sm text-black">
                 <b className={msg.sender === "Ben" ? "text-blue-600" : "text-red-600"}>{msg.sender}:</b>
-                <span className="text-zinc-800 font-medium">{msg.text}</span>
+                <span>{msg.text}</span>
               </div>
             ))}
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 bg-zinc-50 border-t flex items-center gap-3">
-            <button onClick={handleNext} className="bg-black text-white px-6 py-3 rounded-xl font-bold uppercase text-xs hover:bg-zinc-800 transition-all">Next</button>
+            <button onClick={handleNext} className="bg-black text-white px-6 py-3 rounded-xl font-bold uppercase text-xs">Next</button>
             <form onSubmit={sendMessage} className="flex-1 flex gap-2">
-                <input value={inputText} onChange={(e) => setInputText(e.target.value)} className="flex-1 border border-zinc-300 p-3 rounded-xl text-black outline-none focus:border-blue-500" placeholder="Mesaj yaz..." />
-                <button type="submit" className="bg-blue-600 text-white px-5 rounded-xl font-bold hover:bg-blue-700 transition-all">➤</button>
+                <input value={inputText} onChange={(e) => setInputText(e.target.value)} className="flex-1 border border-zinc-300 p-3 rounded-xl text-black outline-none" placeholder="Mesaj yaz..." />
+                <button type="submit" className="bg-blue-600 text-white px-5 rounded-xl font-bold">➤</button>
             </form>
           </div>
         </div>
@@ -247,7 +244,7 @@ export default function Home() {
                     <button onClick={() => setMyGender("male")} className={`py-5 rounded-2xl font-bold border-2 transition-all ${myGender === "male" ? "bg-blue-600 border-blue-400 scale-95" : "bg-zinc-900 border-zinc-800 opacity-60"}`}>ERKEK</button>
                     <button onClick={() => setMyGender("female")} className={`py-5 rounded-2xl font-bold border-2 transition-all ${myGender === "female" ? "bg-pink-600 border-pink-400 scale-95" : "bg-zinc-900 border-zinc-800 opacity-60"}`}>KADIN</button>
                 </div>
-                <button onClick={() => { if(!myGender) return alert("Cinsiyet seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl uppercase shadow-2xl transition-all hover:bg-blue-500 hover:text-white active:scale-95">BAŞLAT</button>
+                <button onClick={() => { if(!myGender) return alert("Cinsiyet seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl uppercase shadow-2xl transition-all">BAŞLAT</button>
             </div>
         </div>
       )}
@@ -255,11 +252,7 @@ export default function Home() {
       <style jsx global>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        @keyframes swipe {
-          0% { transform: translateX(50px); opacity: 0; }
-          50% { opacity: 1; }
-          100% { transform: translateX(-50px); opacity: 0; }
-        }
+        @keyframes swipe { 0% { transform: translateX(50px); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateX(-50px); opacity: 0; } }
         .animate-in { animation-duration: 0.3s; animation-fill-mode: both; }
         .slide-in-from-bottom-2 { animation-name: slideInBottom2; }
         .slide-in-from-left-2 { animation-name: slideInLeft; }
