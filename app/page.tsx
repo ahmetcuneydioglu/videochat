@@ -34,12 +34,32 @@ export default function Home() {
   const [isMobileInputActive, setIsMobileInputActive] = useState(false);
   const [showSwipeHint, setShowSwipeHint] = useState(false);
 
+  // iOS İÇİN ÖZEL: Klavye açıldığında yüksekliği sabitleme
   useEffect(() => {
     setIsMounted(true);
-    if (typeof window !== "undefined" && window.innerWidth < 768) {
+    
+    const handleVisualViewportResize = () => {
+      if (window.visualViewport) {
+        // iOS'ta klavye açıldığında viewport yüksekliğini zorla ayarla
+        document.documentElement.style.setProperty('--vv-height', `${window.visualViewport.height}px`);
+        window.scrollTo(0, 0); // Kaymayı engelle
+      }
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleVisualViewportResize);
+      window.visualViewport.addEventListener('scroll', handleVisualViewportResize);
+    }
+
+    if (window.innerWidth < 768) {
         const hasSwiped = localStorage.getItem("hasSwipedBefore");
         if (!hasSwiped) setShowSwipeHint(true);
     }
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', handleVisualViewportResize);
+      window.visualViewport?.removeEventListener('scroll', handleVisualViewportResize);
+    };
   }, []);
 
   useEffect(() => {
@@ -132,8 +152,8 @@ export default function Home() {
 
   return (
     <div 
-      className="fixed inset-0 w-screen h-screen bg-black text-white flex flex-col font-sans overflow-hidden touch-none select-none"
-      style={{ position: 'fixed', width: '100%', height: '100%', overflow: 'hidden' }}
+      className="fixed inset-0 w-full h-full bg-black text-white flex flex-col font-sans overflow-hidden touch-none select-none"
+      style={{ height: 'var(--vv-height, 100vh)', width: '100vw', position: 'fixed', top: 0, left: 0 }}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
       {/* SWIPE İPUCU */}
@@ -160,19 +180,19 @@ export default function Home() {
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative w-full h-full">
-        {/* MOBİL İÇİN TAM EKRAN KATMANLI KAMERA DÜZENİ */}
+        {/* MOBİL İÇİN ABSOLUTE KATMANLI KAMERALAR */}
         <div className="flex-1 relative md:w-[500px] lg:w-[600px] h-full bg-black md:border-r border-zinc-800 z-10 overflow-hidden">
           
-          {/* ÜST KAMERA KONTEYNERI */}
-          <div className="absolute top-0 left-0 w-full h-[50%] overflow-hidden border-b border-white/10 bg-zinc-900">
+          {/* Üst Kamera: Yabancı */}
+          <div className="absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover pointer-events-none" />
-            <div className="absolute top-4 left-4 z-50 md:hidden">
+            <div className="md:hidden absolute top-4 left-4 z-50">
                 <h1 className="text-xl font-black italic tracking-tighter text-blue-500 bg-black/30 px-2 py-1 rounded">OMEGPT</h1>
                 {partnerCountry && <div className="mt-1 text-[10px] font-bold bg-black/60 px-2 py-1 rounded-full border border-white/10 w-fit">🌍 {partnerCountry}</div>}
             </div>
           </div>
 
-          {/* ALT KAMERA KONTEYNERI */}
+          {/* Alt Kamera: Sen */}
           <div className="absolute bottom-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900">
             <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1] pointer-events-none" />
             <div className="absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase z-20">Sen</div>
@@ -196,12 +216,12 @@ export default function Home() {
                         onClick={() => setIsMobileInputActive(!isMobileInputActive)}
                         className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-2xl border-2 border-white/20 ${isMobileInputActive ? 'bg-zinc-800' : 'bg-blue-600'}`}
                     >
-                        <span className="text-2xl text-white">{isMobileInputActive ? '✕' : '💬'}</span>
+                        <span className="text-2xl text-white leading-none">{isMobileInputActive ? '✕' : '💬'}</span>
                     </button>
                 )}
             </div>
 
-            {/* MOBİL INPUT - ÜZERİNE BİNEN PANEL */}
+            {/* MOBİL INPUT */}
             {isMobileInputActive && (
                 <div className="absolute bottom-6 left-4 right-20 z-[70] animate-in slide-in-from-bottom-2 duration-200">
                     <form onSubmit={sendMessage} className="flex bg-black/90 backdrop-blur-2xl border border-white/20 p-1 rounded-full shadow-2xl overflow-hidden">
@@ -225,7 +245,7 @@ export default function Home() {
         </div>
 
         {/* WEB CHAT PANELİ */}
-        <div className="hidden md:flex flex-1 flex-col bg-white border-l border-zinc-200 h-full">
+        <div className="hidden md:flex flex-1 flex-col bg-white border-l border-zinc-200">
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {messages.map((msg, idx) => (
               <div key={idx} className="flex gap-2 text-sm text-black">
@@ -260,6 +280,7 @@ export default function Home() {
       )}
 
       <style jsx global>{`
+        /* iOS KRİTİK FİX: Sayfanın büyümesini ve zoom yapmasını engelleme */
         html, body {
             width: 100%;
             height: 100%;
@@ -268,7 +289,8 @@ export default function Home() {
             overflow: hidden !important;
             position: fixed;
             background: black;
-            overscroll-behavior: none; /* Kaydırma zıplamalarını engeller */
+            overscroll-behavior: none;
+            -webkit-text-size-adjust: 100%; /* iOS font büyüme fix */
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
