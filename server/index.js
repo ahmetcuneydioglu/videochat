@@ -15,6 +15,14 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
+app.use((req, res, next) => {
+    if (req.header('x-forwarded-proto') !== 'https' && process.env.NODE_ENV === 'production') {
+        res.redirect(`https://${req.header('host')}${req.url}`);
+    } else {
+        next();
+    }
+});
+
 // Render/Canlı ortamda HTTPS işini platform halleder, biz standart http oluştururuz
 const server = http.createServer(app);
 

@@ -30,10 +30,12 @@ export default function Home() {
   const [partnerId, setPartnerId] = useState<string | null>(null);
   const [messages, setMessages] = useState<{ sender: string, text: string }[]>([]);
   const [inputText, setInputText] = useState("");
+  
+  // MOBİL MESAJLAŞMA MODU
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
-    // Masaüstünde ipucunu hiç gösterme, sadece mobilde localStorage kontrol et
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       const hasSwiped = localStorage.getItem("hasSwipedBefore");
       if (!hasSwiped) setShowSwipeHint(true);
@@ -58,7 +60,7 @@ export default function Home() {
     socket.on("partner_disconnected", () => {
       if (peerRef.current) peerRef.current.destroy();
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-      setPartnerId(null); setPartnerCountry(null);
+      setPartnerId(null); setPartnerCountry(null); setIsMobileChatOpen(false);
     });
     socket.on("signal", (data) => {
       if (peerRef.current && !(peerRef.current as any).destroyed) peerRef.current.signal(data.signal);
@@ -66,7 +68,6 @@ export default function Home() {
     return () => { socket.off("partner_found"); socket.off("partner_disconnected"); socket.off("signal"); };
   }, [isMounted, partnerId]);
 
-  // SWIPE DEDEKTÖRÜ
   const onTouchStart = (e: React.TouchEvent) => {
     touchEndX.current = null;
     touchStartX.current = e.targetTouches[0].clientX;
@@ -99,7 +100,7 @@ export default function Home() {
   const handleNext = () => {
     if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    setPartnerId(null); setIsSearching(true);
+    setPartnerId(null); setIsSearching(true); setIsMobileChatOpen(false);
     socket.emit("find_partner", { myGender, searchGender, onlySameCountry });
   };
 
@@ -134,7 +135,6 @@ export default function Home() {
       onTouchEnd={onTouchEnd}
     >
       
-      {/* SWIPE İPUCU - Sadece Mobilde (md:hidden) */}
       {showSwipeHint && !showModal && !isSearching && partnerId && (
         <div className="md:hidden fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/40 pointer-events-none">
           <div className="flex flex-col items-center animate-pulse">
@@ -150,7 +150,7 @@ export default function Home() {
 
       {/* ÜST BAR */}
       <header className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-900/50 backdrop-blur-md z-50">
-        <h1 className="text-lg font-black italic tracking-tighter text-blue-500">VIDEOCHAT</h1>
+        <h1 className="text-lg font-black italic tracking-tighter text-blue-500">OMEGPT</h1>
         <div className="flex items-center gap-2">
            {partnerCountry && <span className="text-[9px] font-bold bg-zinc-800 px-2 py-1 rounded-full">🌍 {partnerCountry}</span>}
            <button onClick={handleReport} className="hidden md:block bg-red-600/20 text-red-500 border border-red-500/20 px-3 py-1 rounded-lg text-[10px] font-black uppercase">BİLDİR</button>
@@ -160,45 +160,93 @@ export default function Home() {
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* KAMERALAR */}
         <div className="w-full md:w-[450px] lg:w-[500px] h-full flex flex-col gap-[1px] bg-black border-r border-zinc-800 relative z-10">
+          
+          {/* Yabancı Video (Mobilde Tam Ekran) */}
           <div className="flex-1 relative bg-zinc-900 overflow-hidden">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-            <div className="absolute bottom-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase">Yabancı</div>
+            <div className="absolute bottom-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase z-20">Yabancı</div>
             {isSearching && (
-              <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center">
+              <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center z-30">
                 <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
                 <p className="text-[9px] font-black text-blue-500 animate-pulse uppercase">ARANIYOR...</p>
               </div>
             )}
           </div>
 
-          <div className="flex-1 relative bg-zinc-900 overflow-hidden">
-            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
-            <div className="absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase">Sen</div>
+          {/* Kendi Videon (Mobilde Küçük Overlay) */}
+          <div className="flex-1 md:flex-1 relative bg-zinc-900 overflow-hidden md:static">
+            <video 
+              ref={localVideoRef} 
+              autoPlay 
+              playsInline 
+              muted 
+              className="w-full h-full object-cover scale-x-[-1] md:block hidden" 
+            />
+            {/* Mobilde sağ alta sabitlenen kendi kameran */}
+            <video 
+              ref={localVideoRef} 
+              autoPlay 
+              playsInline 
+              muted 
+              className="md:hidden absolute bottom-24 right-4 w-28 h-40 object-cover rounded-2xl border-2 border-white/10 shadow-2xl z-40 scale-x-[-1]" 
+            />
+            <div className="hidden md:block absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase">Sen</div>
 
-            {/* MOBİL OVERLAY */}
-            <div className="md:hidden absolute inset-0 flex flex-col justify-end p-4 pointer-events-none">
-                {partnerId && (
-                  <button onClick={handleReport} className="pointer-events-auto self-end mb-2 w-10 h-10 bg-red-600/40 backdrop-blur-md rounded-full flex items-center justify-center border border-red-500/20 text-xs">🚩</button>
-                )}
-                <div className="space-y-1 mb-4">
-                    {messages.slice(-3).map((m, i) => (
-                        <div key={i} className="bg-black/40 backdrop-blur-md px-3 py-1 rounded-xl text-[10px] inline-block border border-white/5">
-                            <b className={m.sender === "Ben" ? "text-blue-400" : "text-pink-400"}>{m.sender}:</b> {m.text}
-                        </div>
-                    ))}
+            {/* MOBİL UI OVERLAY */}
+            <div className="md:hidden absolute inset-0 flex flex-col justify-between p-4 pointer-events-none z-50">
+                {/* Rapor Butonu */}
+                <div className="flex justify-end">
+                    {partnerId && (
+                      <button onClick={handleReport} className="pointer-events-auto w-10 h-10 bg-red-600/40 backdrop-blur-md rounded-full flex items-center justify-center border border-red-500/20 text-xs">🚩</button>
+                    )}
                 </div>
-                <div className="flex items-center gap-2 pointer-events-auto">
-                    <button onClick={handleNext} disabled={isSearching} className="h-12 px-6 bg-white text-black rounded-2xl font-black text-xs">NEXT</button>
-                    <form onSubmit={sendMessage} className="flex-1 flex gap-1 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-2xl">
-                        <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Mesaj..." className="flex-1 bg-transparent px-3 py-2 text-xs outline-none" />
-                        <button type="submit" className="bg-blue-600 px-4 py-2 rounded-xl text-[10px] font-bold uppercase">OK</button>
-                    </form>
+
+                {/* Mesaj Önizleme ve İkon */}
+                <div className="flex flex-col items-end gap-3 pointer-events-auto">
+                    {/* Son Mesajlar (Baloncuk şeklinde) */}
+                    {!isMobileChatOpen && (
+                        <div className="space-y-1 w-full flex flex-col items-start px-2">
+                            {messages.slice(-2).map((m, i) => (
+                                <div key={i} className="bg-black/60 backdrop-blur-md px-3 py-2 rounded-2xl text-[11px] border border-white/5 max-w-[80%] animate-in slide-in-from-left-2">
+                                    <b className={m.sender === "Ben" ? "text-blue-400" : "text-pink-400"}>{m.sender}:</b> {m.text}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    
+                    {/* Mesaj Açma İkonu */}
+                    {partnerId && (
+                        <button 
+                            onClick={() => setIsMobileChatOpen(!isMobileChatOpen)}
+                            className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl border-4 border-black/20"
+                        >
+                            <span className="text-xl">{isMobileChatOpen ? "✕" : "💬"}</span>
+                        </button>
+                    )}
                 </div>
             </div>
+
+            {/* MOBİL MESAJ INPUT POPUP */}
+            {isMobileChatOpen && (
+                <div className="md:hidden absolute inset-x-0 bottom-0 bg-zinc-900/95 backdrop-blur-2xl p-4 border-t border-white/10 z-[60] animate-in slide-in-from-bottom">
+                    <div className="flex items-center gap-2">
+                        <form onSubmit={sendMessage} className="flex-1 flex gap-2 bg-white/5 p-1 rounded-2xl border border-white/10">
+                            <input 
+                                autoFocus
+                                value={inputText} 
+                                onChange={(e) => setInputText(e.target.value)} 
+                                placeholder="Bir şeyler yaz..." 
+                                className="flex-1 bg-transparent px-4 py-3 text-sm outline-none" 
+                            />
+                            <button type="submit" className="bg-blue-600 px-6 rounded-xl text-xs font-bold uppercase">GÖNDER</button>
+                        </form>
+                    </div>
+                </div>
+            )}
           </div>
         </div>
 
-        {/* WEB CHAT ALANI */}
+        {/* WEB CHAT ALANI (Değişmedi - Next butonu burada duruyor) */}
         <div className="hidden md:flex flex-1 flex-col bg-white">
           <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-white">
             {messages.map((msg, idx) => (
@@ -210,7 +258,7 @@ export default function Home() {
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 bg-zinc-50 border-t border-zinc-200 flex items-center gap-4">
-            <button onClick={handleNext} disabled={isSearching} className="bg-black text-white px-10 py-4 rounded-2xl font-black text-sm uppercase">NEXT</button>
+            <button onClick={handleNext} disabled={isSearching} className="bg-black text-white px-10 py-4 rounded-2xl font-black text-sm uppercase hover:bg-zinc-800 transition-all">NEXT</button>
             <form onSubmit={sendMessage} className="flex-1 flex gap-2">
                 <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Mesaj yaz..." className="flex-1 bg-white border border-zinc-300 p-4 rounded-2xl text-black text-sm outline-none" />
                 <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase">GÖNDER</button>
@@ -223,22 +271,22 @@ export default function Home() {
       {showModal && (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-3xl z-[100] flex items-center justify-center p-6 text-center">
             <div className="max-w-xs w-full space-y-6">
-                <h2 className="text-3xl font-black italic tracking-tighter text-blue-500 uppercase">VIDEOCHAT</h2>
+                <h2 className="text-3xl font-black italic tracking-tighter text-blue-500 uppercase">OMEGPT</h2>
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => setMyGender("male")} className={`py-4 rounded-2xl font-bold border-2 ${myGender === "male" ? "bg-blue-600 border-blue-400" : "bg-zinc-900"}`}>ERKEK</button>
-                    <button onClick={() => setMyGender("female")} className={`py-4 rounded-2xl font-bold border-2 ${myGender === "female" ? "bg-pink-600 border-pink-400" : "bg-zinc-900"}`}>KADIN</button>
+                    <button onClick={() => setMyGender("male")} className={`py-4 rounded-2xl font-bold border-2 transition-all ${myGender === "male" ? "bg-blue-600 border-blue-400" : "bg-zinc-900 border-zinc-800"}`}>ERKEK</button>
+                    <button onClick={() => setMyGender("female")} className={`py-4 rounded-2xl font-bold border-2 transition-all ${myGender === "female" ? "bg-pink-600 border-pink-400" : "bg-zinc-900 border-zinc-800"}`}>KADIN</button>
                 </div>
                 <div className="space-y-3">
-                    <select value={searchGender} onChange={(e) => setSearchGender(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-2xl font-bold text-sm">
+                    <select value={searchGender} onChange={(e) => setSearchGender(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-2xl font-bold text-sm outline-none focus:border-blue-500">
                         <option value="all">HERKES</option>
                         <option value="male">ERKEKLER</option>
                         <option value="female">KADINLAR</option>
                     </select>
-                    <button onClick={() => setOnlySameCountry(!onlySameCountry)} className={`w-full py-4 rounded-2xl font-black text-[10px] border-2 ${onlySameCountry ? "border-green-500 text-green-500 bg-green-500/10" : "border-zinc-800 text-zinc-600"}`}>
+                    <button onClick={() => setOnlySameCountry(!onlySameCountry)} className={`w-full py-4 rounded-2xl font-black text-[10px] border-2 transition-all ${onlySameCountry ? "border-green-500 text-green-500 bg-green-500/10" : "border-zinc-800 text-zinc-600"}`}>
                         {onlySameCountry ? "✓ KENDİ ÜLKEM" : "DÜNYA GENELİ"}
                     </button>
                 </div>
-                <button onClick={() => { if(!myGender) return alert("Seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl uppercase shadow-2xl">BAŞLAT</button>
+                <button onClick={() => { if(!myGender) return alert("Cinsiyetinizi seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl uppercase shadow-2xl hover:bg-zinc-200 transition-all">BAŞLAT</button>
             </div>
         </div>
       )}
@@ -249,6 +297,11 @@ export default function Home() {
           50% { opacity: 1; }
           100% { transform: translateX(-50px); opacity: 0; }
         }
+        .animate-in { animation-duration: 0.3s; animation-fill-mode: both; }
+        .slide-in-from-bottom { animation-name: slideInBottom; }
+        .slide-in-from-left-2 { animation-name: slideInLeft; }
+        @keyframes slideInBottom { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        @keyframes slideInLeft { from { transform: translateX(-10px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
       `}</style>
     </div>
   );
