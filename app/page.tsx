@@ -132,17 +132,17 @@ export default function Home() {
 
   return (
     <div 
-      className="fixed inset-0 w-screen h-screen bg-black text-white flex flex-col font-sans overflow-hidden touch-none"
+      className="fixed inset-0 bg-black text-white flex flex-col font-sans overflow-hidden touch-none"
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
       {/* SWIPE İPUCU */}
       {showSwipeHint && !showModal && !isSearching && partnerId && (
-        <div className="md:hidden fixed inset-0 z-[120] flex flex-col items-center justify-center bg-black/60 pointer-events-none">
+        <div className="md:hidden fixed inset-0 z-[120] flex flex-col items-center justify-center bg-black/60 pointer-events-none text-white">
           <div className="flex flex-col items-center animate-pulse">
             <div className="relative w-24 h-24 mb-6">
                <span className="text-6xl absolute animate-[swipe_2s_infinite]">👈</span>
             </div>
-            <p className="text-xs font-black tracking-widest uppercase bg-blue-600 px-6 py-3 rounded-full shadow-2xl text-white">
+            <p className="text-xs font-black tracking-widest uppercase bg-blue-600 px-6 py-3 rounded-full shadow-2xl">
               Sıradaki için kaydır
             </p>
           </div>
@@ -159,11 +159,11 @@ export default function Home() {
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative w-full h-full">
-        {/* MOBİLE ÖZEL: GENİŞLİK SABİTLEME (W-SCREEN) */}
-        <div className="flex-1 flex flex-col md:w-[500px] lg:w-[600px] h-full bg-black md:border-r border-zinc-800 relative z-10 w-screen overflow-hidden">
+        {/* MOBİL VE WEB KONTEYNER */}
+        <div className="flex-1 grid grid-rows-2 md:grid-rows-1 md:grid-cols-1 md:w-[500px] lg:w-[600px] h-full bg-black md:border-r border-zinc-800 relative z-10 w-full overflow-hidden">
           
-          {/* Üst Kamera */}
-          <div className="flex-1 relative overflow-hidden bg-zinc-900 border-b border-white/5 w-full">
+          {/* Üst Kamera: Yabancı (h-full ekledik, grid tarafından yönetilir) */}
+          <div className="relative overflow-hidden bg-zinc-900 border-b border-white/5 h-full">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
             <div className="md:hidden absolute top-4 left-4 z-50">
                 <h1 className="text-xl font-black italic tracking-tighter text-blue-500 bg-black/30 px-2 py-1 rounded">OMEGPT</h1>
@@ -171,16 +171,16 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Alt Kamera */}
-          <div className="flex-1 relative overflow-hidden bg-zinc-900 w-full">
+          {/* Alt Kamera: Sen */}
+          <div className="relative overflow-hidden bg-zinc-900 h-full">
             <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
             <div className="absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase z-20">Sen</div>
 
-            {/* MESAJ AKIŞI */}
+            {/* MESAJ AKIŞI (Videonun üzerinde süzülür) */}
             <div className="md:hidden absolute bottom-24 left-4 right-20 z-40 flex flex-col justify-end max-h-[160px] overflow-y-auto pointer-events-auto no-scrollbar scroll-smooth">
                 <div className="flex flex-col gap-1.5 p-2">
                     {messages.map((m, i) => (
-                        <div key={i} className="bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-2xl text-[12px] border border-white/5 w-fit max-w-full break-words shadow-lg animate-in slide-in-from-left-2">
+                        <div key={i} className="bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-2xl text-[12px] border border-white/5 w-fit max-w-full break-words shadow-lg animate-in slide-in-from-left-2 text-white">
                             <b className={m.sender === "Ben" ? "text-blue-400" : "text-pink-400"}>{m.sender}:</b> {m.text}
                         </div>
                     ))}
@@ -188,7 +188,7 @@ export default function Home() {
                 </div>
             </div>
 
-            {/* SAĞ ALT BUTON - W-SCREEN İLE ARTIK KAYMAZ */}
+            {/* SAĞ ALT BUTON - Sabitlendi */}
             <div className="md:hidden absolute bottom-6 right-4 z-50 pointer-events-auto">
                 {partnerId && (
                     <button 
@@ -253,11 +253,13 @@ export default function Home() {
       <style jsx global>{`
         /* Ekranın sağa kaymasını engelleyen kritik CSS */
         html, body {
-            max-width: 100%;
-            overflow-x: hidden !important;
-            position: fixed; /* Mobilde scroll zıplamalarını engeller */
+            max-width: 100vw;
             width: 100%;
             height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden !important;
+            position: fixed;
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
