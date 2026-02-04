@@ -31,7 +31,6 @@ export default function Home() {
   const [messages, setMessages] = useState<{ sender: string, text: string }[]>([]);
   const [inputText, setInputText] = useState("");
   
-  // MOBİL MESAJLAŞMA MODU
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
 
   useEffect(() => {
@@ -148,7 +147,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* ÜST BAR */}
       <header className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-900/50 backdrop-blur-md z-50">
         <h1 className="text-lg font-black italic tracking-tighter text-blue-500">OMEGPT</h1>
         <div className="flex items-center gap-2">
@@ -158,11 +156,11 @@ export default function Home() {
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        {/* KAMERALAR */}
-        <div className="w-full md:w-[450px] lg:w-[500px] h-full flex flex-col gap-[1px] bg-black border-r border-zinc-800 relative z-10">
+        {/* KAMERALAR KONTEYNERI */}
+        <div className="flex-1 flex flex-col md:w-[450px] lg:w-[500px] bg-black md:border-r border-zinc-800 relative z-10">
           
-          {/* Yabancı Video (Mobilde Tam Ekran) */}
-          <div className="flex-1 relative bg-zinc-900 overflow-hidden">
+          {/* Üst Kamera: Yabancı (Mobilde %50 yükseklik) */}
+          <div className="flex-1 relative bg-zinc-900 overflow-hidden border-b border-zinc-800/50">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
             <div className="absolute bottom-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase z-20">Yabancı</div>
             {isSearching && (
@@ -171,41 +169,25 @@ export default function Home() {
                 <p className="text-[9px] font-black text-blue-500 animate-pulse uppercase">ARANIYOR...</p>
               </div>
             )}
+            {/* Mobil Rapor Butonu */}
+            <div className="md:hidden absolute top-4 right-4 z-40">
+                {partnerId && (
+                  <button onClick={handleReport} className="w-10 h-10 bg-red-600/40 backdrop-blur-md rounded-full flex items-center justify-center border border-red-500/20 text-xs">🚩</button>
+                )}
+            </div>
           </div>
 
-          {/* Kendi Videon (Mobilde Küçük Overlay) */}
-          <div className="flex-1 md:flex-1 relative bg-zinc-900 overflow-hidden md:static">
-            <video 
-              ref={localVideoRef} 
-              autoPlay 
-              playsInline 
-              muted 
-              className="w-full h-full object-cover scale-x-[-1] md:block hidden" 
-            />
-            {/* Mobilde sağ alta sabitlenen kendi kameran */}
-            <video 
-              ref={localVideoRef} 
-              autoPlay 
-              playsInline 
-              muted 
-              className="md:hidden absolute bottom-24 right-4 w-28 h-40 object-cover rounded-2xl border-2 border-white/10 shadow-2xl z-40 scale-x-[-1]" 
-            />
-            <div className="hidden md:block absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase">Sen</div>
+          {/* Alt Kamera: Sen (Mobilde %50 yükseklik) */}
+          <div className="flex-1 relative bg-zinc-900 overflow-hidden">
+            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
+            <div className="absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase z-20">Sen</div>
 
-            {/* MOBİL UI OVERLAY */}
-            <div className="md:hidden absolute inset-0 flex flex-col justify-between p-4 pointer-events-none z-50">
-                {/* Rapor Butonu */}
-                <div className="flex justify-end">
-                    {partnerId && (
-                      <button onClick={handleReport} className="pointer-events-auto w-10 h-10 bg-red-600/40 backdrop-blur-md rounded-full flex items-center justify-center border border-red-500/20 text-xs">🚩</button>
-                    )}
-                </div>
-
-                {/* Mesaj Önizleme ve İkon */}
-                <div className="flex flex-col items-end gap-3 pointer-events-auto">
-                    {/* Son Mesajlar (Baloncuk şeklinde) */}
-                    {!isMobileChatOpen && (
-                        <div className="space-y-1 w-full flex flex-col items-start px-2">
+            {/* MOBİL ALT KATMAN (Sadece İkonlar ve Mesajlar) */}
+            <div className="md:hidden absolute inset-0 flex flex-col justify-end p-4 pointer-events-none z-50">
+                <div className="flex flex-col items-end gap-3 pointer-events-auto w-full">
+                    {/* Son Mesajlar Baloncuğu */}
+                    {!isMobileChatOpen && messages.length > 0 && (
+                        <div className="space-y-1 w-full flex flex-col items-start mb-2">
                             {messages.slice(-2).map((m, i) => (
                                 <div key={i} className="bg-black/60 backdrop-blur-md px-3 py-2 rounded-2xl text-[11px] border border-white/5 max-w-[80%] animate-in slide-in-from-left-2">
                                     <b className={m.sender === "Ben" ? "text-blue-400" : "text-pink-400"}>{m.sender}:</b> {m.text}
@@ -214,39 +196,41 @@ export default function Home() {
                         </div>
                     )}
                     
-                    {/* Mesaj Açma İkonu */}
+                    {/* Sağ Alt Mesaj İkonu */}
                     {partnerId && (
                         <button 
-                            onClick={() => setIsMobileChatOpen(!isMobileChatOpen)}
-                            className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl border-4 border-black/20"
+                            onClick={() => setIsMobileChatOpen(true)}
+                            className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl border-4 border-black/20 self-end"
                         >
-                            <span className="text-xl">{isMobileChatOpen ? "✕" : "💬"}</span>
+                            <span className="text-xl">💬</span>
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* MOBİL MESAJ INPUT POPUP */}
+            {/* MOBİL MESAJ GİRİŞ PANELİ */}
             {isMobileChatOpen && (
-                <div className="md:hidden absolute inset-x-0 bottom-0 bg-zinc-900/95 backdrop-blur-2xl p-4 border-t border-white/10 z-[60] animate-in slide-in-from-bottom">
-                    <div className="flex items-center gap-2">
-                        <form onSubmit={sendMessage} className="flex-1 flex gap-2 bg-white/5 p-1 rounded-2xl border border-white/10">
-                            <input 
-                                autoFocus
-                                value={inputText} 
-                                onChange={(e) => setInputText(e.target.value)} 
-                                placeholder="Bir şeyler yaz..." 
-                                className="flex-1 bg-transparent px-4 py-3 text-sm outline-none" 
-                            />
-                            <button type="submit" className="bg-blue-600 px-6 rounded-xl text-xs font-bold uppercase">GÖNDER</button>
-                        </form>
+                <div className="md:hidden absolute inset-x-0 bottom-0 bg-zinc-900/95 backdrop-blur-3xl p-4 border-t border-white/10 z-[60] animate-in slide-in-from-bottom pointer-events-auto">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Mesajlaşma</span>
+                        <button onClick={() => setIsMobileChatOpen(false)} className="text-white text-xs bg-zinc-800 px-3 py-1 rounded-full">Kapat ✕</button>
                     </div>
+                    <form onSubmit={sendMessage} className="flex gap-2 bg-white/5 p-1 rounded-2xl border border-white/10">
+                        <input 
+                            autoFocus
+                            value={inputText} 
+                            onChange={(e) => setInputText(e.target.value)} 
+                            placeholder="Bir şeyler yaz..." 
+                            className="flex-1 bg-transparent px-4 py-3 text-sm outline-none" 
+                        />
+                        <button type="submit" className="bg-blue-600 px-6 rounded-xl text-xs font-bold uppercase">OK</button>
+                    </form>
                 </div>
             )}
           </div>
         </div>
 
-        {/* WEB CHAT ALANI (Değişmedi - Next butonu burada duruyor) */}
+        {/* WEB CHAT ALANI */}
         <div className="hidden md:flex flex-1 flex-col bg-white">
           <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-white">
             {messages.map((msg, idx) => (
