@@ -132,12 +132,12 @@ export default function Home() {
 
   return (
     <div 
-      className="fixed inset-0 bg-black text-white flex flex-col font-sans overflow-hidden touch-none"
+      className="fixed inset-0 w-screen h-screen bg-black text-white flex flex-col font-sans overflow-hidden touch-none"
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
       {/* SWIPE İPUCU */}
       {showSwipeHint && !showModal && !isSearching && partnerId && (
-        <div className="md:hidden fixed inset-0 z-[110] flex flex-col items-center justify-center bg-black/60 pointer-events-none">
+        <div className="md:hidden fixed inset-0 z-[120] flex flex-col items-center justify-center bg-black/60 pointer-events-none">
           <div className="flex flex-col items-center animate-pulse">
             <div className="relative w-24 h-24 mb-6">
                <span className="text-6xl absolute animate-[swipe_2s_infinite]">👈</span>
@@ -158,11 +158,12 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        <div className="flex-1 flex flex-col md:w-[500px] lg:w-[600px] h-full bg-black md:border-r border-zinc-800 relative z-10">
+      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative w-full h-full">
+        {/* MOBİLE ÖZEL: GENİŞLİK SABİTLEME (W-SCREEN) */}
+        <div className="flex-1 flex flex-col md:w-[500px] lg:w-[600px] h-full bg-black md:border-r border-zinc-800 relative z-10 w-screen overflow-hidden">
           
-          {/* Üst Kamera: Yabancı */}
-          <div className="flex-1 relative overflow-hidden bg-zinc-900 border-b border-white/5">
+          {/* Üst Kamera */}
+          <div className="flex-1 relative overflow-hidden bg-zinc-900 border-b border-white/5 w-full">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
             <div className="md:hidden absolute top-4 left-4 z-50">
                 <h1 className="text-xl font-black italic tracking-tighter text-blue-500 bg-black/30 px-2 py-1 rounded">OMEGPT</h1>
@@ -170,8 +171,8 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Alt Kamera: Sen */}
-          <div className="flex-1 relative overflow-hidden bg-zinc-900">
+          {/* Alt Kamera */}
+          <div className="flex-1 relative overflow-hidden bg-zinc-900 w-full">
             <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
             <div className="absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase z-20">Sen</div>
 
@@ -187,7 +188,7 @@ export default function Home() {
                 </div>
             </div>
 
-            {/* SAĞ ALT MESAJ İKONU - Konum Sabitlendi */}
+            {/* SAĞ ALT BUTON - W-SCREEN İLE ARTIK KAYMAZ */}
             <div className="md:hidden absolute bottom-6 right-4 z-50 pointer-events-auto">
                 {partnerId && (
                     <button 
@@ -199,7 +200,7 @@ export default function Home() {
                 )}
             </div>
 
-            {/* MOBİL INPUT - Sağdan Boşluk Artırıldı */}
+            {/* MOBİL INPUT */}
             {isMobileInputActive && (
                 <div className="md:hidden absolute bottom-6 left-4 right-20 z-50 animate-in slide-in-from-bottom-2 duration-200">
                     <form onSubmit={sendMessage} className="flex bg-black/85 backdrop-blur-2xl border border-white/20 p-1 rounded-full shadow-2xl overflow-hidden">
@@ -250,6 +251,14 @@ export default function Home() {
       )}
 
       <style jsx global>{`
+        /* Ekranın sağa kaymasını engelleyen kritik CSS */
+        html, body {
+            max-width: 100%;
+            overflow-x: hidden !important;
+            position: fixed; /* Mobilde scroll zıplamalarını engeller */
+            width: 100%;
+            height: 100%;
+        }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes swipe { 0% { transform: translateX(50px); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateX(-50px); opacity: 0; } }
