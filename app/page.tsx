@@ -32,15 +32,21 @@ export default function Home() {
   const [inputText, setInputText] = useState("");
   
   const [isMobileInputActive, setIsMobileInputActive] = useState(false);
+  const [showSwipeHint, setShowSwipeHint] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
+    // Mobildeysen ve daha önce kaydırmadıysan ipucunu hazırla
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+        const hasSwiped = localStorage.getItem("hasSwipedBefore");
+        if (!hasSwiped) setShowSwipeHint(true);
+    }
   }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     mobileChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isMobileInputActive]);
 
   useEffect(() => {
     async function startCamera() {
@@ -105,16 +111,26 @@ export default function Home() {
     }
   };
 
+  // SWIPE DEDEKTÖRÜ (Gelişmiş)
   const onTouchStart = (e: React.TouchEvent) => {
-    if (isMobileInputActive) return;
     touchEndX.current = null;
     touchStartX.current = e.targetTouches[0].clientX;
   };
   const onTouchMove = (e: React.TouchEvent) => (touchEndX.current = e.targetTouches[0].clientX);
   const onTouchEnd = () => {
-    if (!touchStartX.current || !touchEndX.current || isMobileInputActive) return;
+    if (!touchStartX.current || !touchEndX.current) return;
     const distance = touchStartX.current - touchEndX.current;
-    if (distance > 70 && !isSearching) handleNext();
+    
+    // Swipe algılandığında (70px mesafe)
+    if (distance > 70 && !isSearching) {
+        if (showSwipeHint) {
+            setShowSwipeHint(false);
+            localStorage.setItem("hasSwipedBefore", "true");
+        }
+        // Eğer input açıksa kapat ve geç
+        if (isMobileInputActive) setIsMobileInputActive(false);
+        handleNext();
+    }
   };
 
   if (!isMounted) return null;
@@ -124,6 +140,20 @@ export default function Home() {
       className="fixed inset-0 bg-black text-white flex flex-col font-sans overflow-hidden touch-none"
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
+      {/* SWIPE İPUCU */}
+      {showSwipeHint && !showModal && !isSearching && partnerId && (
+        <div className="md:hidden fixed inset-0 z-[110] flex flex-col items-center justify-center bg-black/60 pointer-events-none">
+          <div className="flex flex-col items-center animate-pulse">
+            <div className="relative w-24 h-24 mb-6">
+               <span className="text-6xl absolute animate-[swipe_2s_infinite]">👈</span>
+            </div>
+            <p className="text-xs font-black tracking-widest uppercase bg-blue-600 px-6 py-3 rounded-full shadow-2xl">
+              Değiştirmek için kaydır
+            </p>
+          </div>
+        </div>
+      )}
+
       <header className="hidden md:flex h-12 border-b border-zinc-800 items-center justify-between px-4 bg-zinc-900/50 backdrop-blur-md z-[100]">
         <h1 className="text-lg font-black italic tracking-tighter text-blue-500 uppercase">OMEGPT</h1>
         <div className="flex items-center gap-2">
@@ -133,8 +163,8 @@ export default function Home() {
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        {/* KAMERALAR KONTEYNERI - WEB BOYUTU DÜZELTİLDİ */}
-        <div className="flex-1 flex flex-col md:flex-[0.6] lg:flex-[0.5] xl:max-w-[1000px] h-full bg-black md:border-r border-zinc-800 relative">
+        {/* KAMERALAR */}
+        <div className="flex-1 flex flex-col md:w-[500px] lg:w-[600px] h-full bg-black md:border-r border-zinc-800 relative z-10">
           
           <div className="flex-1 relative overflow-hidden bg-zinc-900 border-b border-white/5">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
@@ -148,8 +178,8 @@ export default function Home() {
             <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
             <div className="absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase z-20">Sen</div>
 
-            {/* MESAJ AKIŞI - KAYDIRILABİLİR (SCROLLABLE) YAPILDI */}
-            <div className="md:hidden absolute bottom-24 left-4 right-20 z-40 flex flex-col justify-end max-h-[160px] overflow-y-auto pointer-events-auto no-scrollbar scroll-smooth">
+            {/* MESAJ AKIŞI */}
+            <div className="md:hidden absolute bottom-24 left-4 right-24 z-40 flex flex-col justify-end max-h-[180px] overflow-y-auto pointer-events-auto no-scrollbar scroll-smooth">
                 <div className="flex flex-col gap-1.5 p-2">
                     {messages.map((m, i) => (
                         <div key={i} className="bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-2xl text-[12px] border border-white/5 w-fit max-w-full break-words shadow-lg animate-in slide-in-from-left-2">
@@ -160,14 +190,14 @@ export default function Home() {
                 </div>
             </div>
 
-            {/* SAĞ ALT MESAJ İKONU - SOLA ÇEKİLDİ VE GÖRÜNÜR YAPILDI */}
-            <div className="md:hidden absolute bottom-6 right-6 z-50 pointer-events-auto">
+            {/* SAĞ ALT MESAJ İKONU - X Butonu ile birlikte Hizalandı */}
+            <div className="md:hidden absolute bottom-6 right-6 z-50 pointer-events-auto flex flex-col items-center justify-center w-14 h-14">
                 {partnerId && (
                     <button 
                         onClick={() => setIsMobileInputActive(!isMobileInputActive)}
-                        className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-2xl border-2 border-white/10 ${isMobileInputActive ? 'bg-zinc-800 rotate-90' : 'bg-blue-600 active:scale-90'}`}
+                        className={`w-full h-full rounded-full flex items-center justify-center transition-all shadow-2xl border-2 border-white/10 ${isMobileInputActive ? 'bg-zinc-800' : 'bg-blue-600 active:scale-90'}`}
                     >
-                        <span className="text-2xl text-white">{isMobileInputActive ? '✕' : '💬'}</span>
+                        <span className="text-2xl text-white leading-none">{isMobileInputActive ? '✕' : '💬'}</span>
                     </button>
                 )}
             </div>
@@ -175,20 +205,20 @@ export default function Home() {
             {/* MOBİL INPUT */}
             {isMobileInputActive && (
                 <div className="md:hidden absolute bottom-6 left-4 right-24 z-50 animate-in slide-in-from-bottom-2 duration-200">
-                    <form onSubmit={sendMessage} className="flex bg-black/80 backdrop-blur-2xl border border-white/20 p-1.5 rounded-full shadow-2xl">
+                    <form onSubmit={sendMessage} className="flex bg-black/85 backdrop-blur-2xl border border-white/20 p-1.5 rounded-full shadow-2xl">
                         <input 
                             autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Yaz..." 
                             className="flex-1 bg-transparent px-4 py-2 text-sm outline-none text-white w-full" 
                         />
-                        <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center"> ➤ </button>
+                        <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"> ➤ </button>
                     </form>
                 </div>
             )}
           </div>
         </div>
 
-        {/* WEB CHAT PANELİ - BOYUTU DENGELENDİ */}
-        <div className="hidden md:flex flex-1 flex-col bg-white border-l border-zinc-200 min-w-[350px]">
+        {/* WEB CHAT PANELİ - Eski stabil görünümüne döndürüldü */}
+        <div className="hidden md:flex flex-1 flex-col bg-white border-l border-zinc-200">
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {messages.map((msg, idx) => (
               <div key={idx} className="flex gap-2 text-sm">
@@ -212,12 +242,12 @@ export default function Home() {
       {showModal && (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-3xl z-[200] flex items-center justify-center p-6 text-center">
             <div className="max-w-xs w-full space-y-6">
-                <h2 className="text-3xl font-black italic tracking-tighter text-blue-500 uppercase">OMEGPT</h2>
+                <h2 className="text-4xl font-black italic tracking-tighter text-blue-500 uppercase">OMEGPT</h2>
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => setMyGender("male")} className={`py-4 rounded-2xl font-bold border-2 transition-all ${myGender === "male" ? "bg-blue-600 border-blue-400 scale-95" : "bg-zinc-900 border-zinc-800 opacity-60"}`}>ERKEK</button>
-                    <button onClick={() => setMyGender("female")} className={`py-4 rounded-2xl font-bold border-2 transition-all ${myGender === "female" ? "bg-pink-600 border-pink-400 scale-95" : "bg-zinc-900 border-zinc-800 opacity-60"}`}>KADIN</button>
+                    <button onClick={() => setMyGender("male")} className={`py-5 rounded-2xl font-bold border-2 transition-all ${myGender === "male" ? "bg-blue-600 border-blue-400 scale-95" : "bg-zinc-900 border-zinc-800 opacity-60"}`}>ERKEK</button>
+                    <button onClick={() => setMyGender("female")} className={`py-5 rounded-2xl font-bold border-2 transition-all ${myGender === "female" ? "bg-pink-600 border-pink-400 scale-95" : "bg-zinc-900 border-zinc-800 opacity-60"}`}>KADIN</button>
                 </div>
-                <button onClick={() => { if(!myGender) return alert("Cinsiyet seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl uppercase shadow-2xl transition-all hover:bg-blue-500 hover:text-white">BAŞLAT</button>
+                <button onClick={() => { if(!myGender) return alert("Cinsiyet seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl uppercase shadow-2xl transition-all hover:bg-blue-500 hover:text-white active:scale-95">BAŞLAT</button>
             </div>
         </div>
       )}
@@ -225,6 +255,11 @@ export default function Home() {
       <style jsx global>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes swipe {
+          0% { transform: translateX(50px); opacity: 0; }
+          50% { opacity: 1; }
+          100% { transform: translateX(-50px); opacity: 0; }
+        }
         .animate-in { animation-duration: 0.3s; animation-fill-mode: both; }
         .slide-in-from-bottom-2 { animation-name: slideInBottom2; }
         .slide-in-from-left-2 { animation-name: slideInLeft; }
