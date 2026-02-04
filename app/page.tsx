@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import Peer from "simple-peer";
 
-// Global window fix (Simple-peer için)
 if (typeof window !== "undefined" && typeof (window as any).global === "undefined") {
   (window as any).global = window;
 }
@@ -32,14 +31,12 @@ export default function Home() {
   const [messages, setMessages] = useState<{ sender: string, text: string }[]>([]);
   const [inputText, setInputText] = useState("");
   
-  // MOBİL INPUT AÇIK MI?
   const [isMobileInputActive, setIsMobileInputActive] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // Mesaj akışını takip et
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     mobileChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -56,19 +53,14 @@ export default function Home() {
     if (isMounted) startCamera();
 
     socket.on("partner_found", (data) => {
-      setMessages([]); 
-      setPartnerId(data.partnerId); 
-      setPartnerCountry(data.country);
-      setIsSearching(false); 
-      initiatePeer(data.partnerId, data.initiator);
+      setMessages([]); setPartnerId(data.partnerId); setPartnerCountry(data.country);
+      setIsSearching(false); initiatePeer(data.partnerId, data.initiator);
     });
 
     socket.on("partner_disconnected", () => {
       if (peerRef.current) peerRef.current.destroy();
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-      setPartnerId(null); 
-      setPartnerCountry(null); 
-      setIsMobileInputActive(false);
+      setPartnerId(null); setPartnerCountry(null); setIsMobileInputActive(false);
     });
 
     socket.on("signal", (data) => {
@@ -78,41 +70,29 @@ export default function Home() {
     });
 
     return () => {
-      socket.off("partner_found");
-      socket.off("partner_disconnected");
-      socket.off("signal");
+      socket.off("partner_found"); socket.off("partner_disconnected"); socket.off("signal");
     };
   }, [isMounted, partnerId]);
 
   function initiatePeer(targetId: string, initiator: boolean) {
     if (!streamRef.current) return;
-    
     const peer = new Peer({ 
-      initiator, 
-      trickle: false, 
-      stream: streamRef.current,
+      initiator, trickle: false, stream: streamRef.current,
       config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } 
     });
-
     peer.on("signal", (data) => socket.emit("signal", { to: targetId, signal: data }));
-    peer.on("stream", (remStream) => { 
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remStream; 
-    });
-
+    peer.on("stream", (remStream) => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remStream; });
     peer.on("data", (data) => {
       const msg = new TextDecoder().decode(data);
       setMessages((prev) => [...prev, { sender: "Yabancı", text: msg }]);
     });
-
     peerRef.current = peer;
   }
 
   const handleNext = () => {
     if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    setPartnerId(null); 
-    setIsSearching(true); 
-    setIsMobileInputActive(false);
+    setPartnerId(null); setIsSearching(true); setIsMobileInputActive(false);
     socket.emit("find_partner", { myGender, searchGender, onlySameCountry });
   };
 
@@ -125,7 +105,6 @@ export default function Home() {
     }
   };
 
-  // Swipe İşlemleri
   const onTouchStart = (e: React.TouchEvent) => {
     if (isMobileInputActive) return;
     touchEndX.current = null;
@@ -143,11 +122,8 @@ export default function Home() {
   return (
     <div 
       className="fixed inset-0 bg-black text-white flex flex-col font-sans overflow-hidden touch-none"
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
-      {/* HEADER (Web) */}
       <header className="hidden md:flex h-12 border-b border-zinc-800 items-center justify-between px-4 bg-zinc-900/50 backdrop-blur-md z-[100]">
         <h1 className="text-lg font-black italic tracking-tighter text-blue-500 uppercase">OMEGPT</h1>
         <div className="flex items-center gap-2">
@@ -157,10 +133,9 @@ export default function Home() {
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        {/* KAMERALAR */}
-        <div className="flex-1 flex flex-col md:w-[450px] lg:w-[500px] h-full bg-black md:border-r border-zinc-800 relative">
+        {/* KAMERALAR KONTEYNERI - WEB BOYUTU DÜZELTİLDİ */}
+        <div className="flex-1 flex flex-col md:flex-[0.6] lg:flex-[0.5] xl:max-w-[1000px] h-full bg-black md:border-r border-zinc-800 relative">
           
-          {/* Yabancı Video */}
           <div className="flex-1 relative overflow-hidden bg-zinc-900 border-b border-white/5">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
             <div className="md:hidden absolute top-4 left-4 z-50">
@@ -169,15 +144,15 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Senin Videon & Akış */}
           <div className="flex-1 relative overflow-hidden bg-zinc-900">
             <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
-            
-            {/* MESAJ AKIŞI (Kamera Üzerinde Sınırsız Akış) */}
-            <div className="md:hidden absolute bottom-20 left-4 right-16 z-40 flex flex-col justify-end max-h-[150px] overflow-y-auto pointer-events-none no-scrollbar">
+            <div className="absolute top-4 left-4 bg-black/40 px-2 py-1 rounded text-[8px] font-bold uppercase z-20">Sen</div>
+
+            {/* MESAJ AKIŞI - KAYDIRILABİLİR (SCROLLABLE) YAPILDI */}
+            <div className="md:hidden absolute bottom-24 left-4 right-20 z-40 flex flex-col justify-end max-h-[160px] overflow-y-auto pointer-events-auto no-scrollbar scroll-smooth">
                 <div className="flex flex-col gap-1.5 p-2">
                     {messages.map((m, i) => (
-                        <div key={i} className="bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-2xl text-[12px] border border-white/5 w-fit max-w-full break-words animate-in slide-in-from-left-2">
+                        <div key={i} className="bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-2xl text-[12px] border border-white/5 w-fit max-w-full break-words shadow-lg animate-in slide-in-from-left-2">
                             <b className={m.sender === "Ben" ? "text-blue-400" : "text-pink-400"}>{m.sender}:</b> {m.text}
                         </div>
                     ))}
@@ -185,54 +160,49 @@ export default function Home() {
                 </div>
             </div>
 
-            {/* SAĞ ALT MESAJ İKONU */}
-            <div className="md:hidden absolute bottom-6 right-4 z-50 pointer-events-auto">
+            {/* SAĞ ALT MESAJ İKONU - SOLA ÇEKİLDİ VE GÖRÜNÜR YAPILDI */}
+            <div className="md:hidden absolute bottom-6 right-6 z-50 pointer-events-auto">
                 {partnerId && (
                     <button 
                         onClick={() => setIsMobileInputActive(!isMobileInputActive)}
-                        className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isMobileInputActive ? 'bg-zinc-800 rotate-90' : 'bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.4)]'}`}
+                        className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-2xl border-2 border-white/10 ${isMobileInputActive ? 'bg-zinc-800 rotate-90' : 'bg-blue-600 active:scale-90'}`}
                     >
                         <span className="text-2xl text-white">{isMobileInputActive ? '✕' : '💬'}</span>
                     </button>
                 )}
             </div>
 
-            {/* MOBİL INPUT (Videonun tam üzerine binen kararlı çubuk) */}
+            {/* MOBİL INPUT */}
             {isMobileInputActive && (
-                <div className="md:hidden absolute bottom-6 left-4 right-20 z-50 animate-in slide-in-from-bottom-2 duration-200">
-                    <form onSubmit={sendMessage} className="flex bg-black/80 backdrop-blur-2xl border border-white/20 p-1 rounded-full shadow-2xl">
+                <div className="md:hidden absolute bottom-6 left-4 right-24 z-50 animate-in slide-in-from-bottom-2 duration-200">
+                    <form onSubmit={sendMessage} className="flex bg-black/80 backdrop-blur-2xl border border-white/20 p-1.5 rounded-full shadow-2xl">
                         <input 
-                            autoFocus
-                            value={inputText} 
-                            onChange={(e) => setInputText(e.target.value)} 
-                            placeholder="Mesaj yaz..." 
+                            autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Yaz..." 
                             className="flex-1 bg-transparent px-4 py-2 text-sm outline-none text-white w-full" 
                         />
-                        <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform">
-                             <span className="text-xs font-bold">➤</span>
-                        </button>
+                        <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center"> ➤ </button>
                     </form>
                 </div>
             )}
           </div>
         </div>
 
-        {/* WEB CHAT (SAĞ PANEL) */}
-        <div className="hidden md:flex w-[400px] flex-col bg-white border-l border-zinc-200">
+        {/* WEB CHAT PANELİ - BOYUTU DENGELENDİ */}
+        <div className="hidden md:flex flex-1 flex-col bg-white border-l border-zinc-200 min-w-[350px]">
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {messages.map((msg, idx) => (
               <div key={idx} className="flex gap-2 text-sm">
                 <b className={msg.sender === "Ben" ? "text-blue-600" : "text-red-600"}>{msg.sender}:</b>
-                <span className="text-zinc-800">{msg.text}</span>
+                <span className="text-zinc-800 font-medium">{msg.text}</span>
               </div>
             ))}
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 bg-zinc-50 border-t flex items-center gap-3">
-            <button onClick={handleNext} className="bg-black text-white px-6 py-3 rounded-xl font-bold uppercase text-xs">Next</button>
+            <button onClick={handleNext} className="bg-black text-white px-6 py-3 rounded-xl font-bold uppercase text-xs hover:bg-zinc-800 transition-all">Next</button>
             <form onSubmit={sendMessage} className="flex-1 flex gap-2">
                 <input value={inputText} onChange={(e) => setInputText(e.target.value)} className="flex-1 border border-zinc-300 p-3 rounded-xl text-black outline-none focus:border-blue-500" placeholder="Mesaj yaz..." />
-                <button type="submit" className="bg-blue-600 text-white px-5 rounded-xl font-bold">➤</button>
+                <button type="submit" className="bg-blue-600 text-white px-5 rounded-xl font-bold hover:bg-blue-700 transition-all">➤</button>
             </form>
           </div>
         </div>
@@ -247,7 +217,7 @@ export default function Home() {
                     <button onClick={() => setMyGender("male")} className={`py-4 rounded-2xl font-bold border-2 transition-all ${myGender === "male" ? "bg-blue-600 border-blue-400 scale-95" : "bg-zinc-900 border-zinc-800 opacity-60"}`}>ERKEK</button>
                     <button onClick={() => setMyGender("female")} className={`py-4 rounded-2xl font-bold border-2 transition-all ${myGender === "female" ? "bg-pink-600 border-pink-400 scale-95" : "bg-zinc-900 border-zinc-800 opacity-60"}`}>KADIN</button>
                 </div>
-                <button onClick={() => { if(!myGender) return alert("Cinsiyet seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl uppercase shadow-2xl transition-all">BAŞLAT</button>
+                <button onClick={() => { if(!myGender) return alert("Cinsiyet seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl uppercase shadow-2xl transition-all hover:bg-blue-500 hover:text-white">BAŞLAT</button>
             </div>
         </div>
       )}
