@@ -20,6 +20,10 @@ export default function Home() {
   const streamRef = useRef<MediaStream | null>(null);
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // SWIPE & TOUCH REFS
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
+
   const [showModal, setShowModal] = useState(true);
   const [showOptions, setShowOptions] = useState(false);
   const [showGenderFilter, setShowGenderFilter] = useState(false);
@@ -87,7 +91,7 @@ export default function Home() {
       setIsSearching(false); 
       initiatePeer(data.partnerId, data.initiator);
 
-      // Match Notification (e.g., You matched with someone from Turkey)
+      // Ülke Bildirimi
       const countryName = allCountries.find(c => c.id === data.country)?.name || data.country;
       setMatchNotification(`You matched with someone from ${countryName}`);
       setTimeout(() => setMatchNotification(null), 4000);
@@ -126,6 +130,7 @@ export default function Home() {
     setPartnerId(null);
     setIsSearching(true);
     setMatchNotification(null);
+    setIsMobileInputActive(false);
     
     if (targetGender !== "all") {
       setSearchStatus("Searching by preference...");
@@ -145,6 +150,20 @@ export default function Home() {
     socket.emit("find_partner", { myGender, searchGender: targetGender, selectedCountry });
   };
 
+  // SWIPE LOGIC
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchEndX.current = null;
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
+  const onTouchMove = (e: React.TouchEvent) => (touchEndX.current = e.targetTouches[0].clientX);
+  const onTouchEnd = () => {
+    if (!touchStartX.current || !touchEndX.current) return;
+    const distance = touchStartX.current - touchEndX.current;
+    if (distance > 70 && !isSearching) {
+        handleNext();
+    }
+  };
+
   const sendMessage = (e: any) => {
     e.preventDefault();
     if (inputText.trim() && peerRef.current?.connected) {
@@ -154,28 +173,16 @@ export default function Home() {
     }
   };
 
-  const toggleMic = () => {
-    if (streamRef.current) {
-      const track = streamRef.current.getAudioTracks()[0];
-      track.enabled = !micOn;
-      setMicOn(!micOn);
-    }
-  };
-
-  const toggleCamera = () => {
-    if (streamRef.current) {
-      const track = streamRef.current.getVideoTracks()[0];
-      track.enabled = !cameraOn;
-      setCameraOn(!cameraOn);
-    }
-  };
-
   if (!isMounted) return null;
 
   return (
-    <div className="fixed inset-0 w-full h-full bg-black text-white flex flex-col font-sans overflow-hidden select-none" style={{ height: 'var(--vv-height, 100vh)' }}>
+    <div 
+      className="fixed inset-0 w-full h-full bg-black text-white flex flex-col font-sans overflow-hidden select-none" 
+      style={{ height: 'var(--vv-height, 100vh)' }}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+    >
       
-      {/* COUNTRY FILTER MODAL */}
+      {/* COUNTRY MODAL */}
       {showCountryFilter && (
         <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white text-black w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
@@ -184,19 +191,10 @@ export default function Home() {
               <button onClick={() => setShowCountryFilter(false)} className="text-zinc-400 text-2xl">✕</button>
             </div>
             <div className="p-4">
-              <div className="relative mb-4">
-                <span className="absolute left-3 top-2.5 text-zinc-400">🔍</span>
-                <input 
-                  type="text" 
-                  placeholder="Search country..." 
-                  className="w-full bg-zinc-100 border-none rounded-full py-2 pl-10 pr-4 text-sm outline-none focus:ring-2 ring-blue-500/20"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
+              <input type="text" placeholder="Search..." className="w-full bg-zinc-100 rounded-full py-2 px-4 mb-4 outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
               <div className="max-h-[350px] overflow-y-auto no-scrollbar space-y-1">
                 {filteredCountries.map((c) => (
-                  <button key={c.id} onClick={() => { setSelectedCountry(c.id); setShowCountryFilter(false); setSearchTerm(""); handleNext(); }} className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl transition-all">
+                  <button key={c.id} onClick={() => { setSelectedCountry(c.id); setShowCountryFilter(false); handleNext(); }} className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl transition-all">
                     <div className="flex items-center gap-3"><span>{c.flag}</span><span className={`text-sm font-medium ${selectedCountry === c.id ? 'text-blue-500' : 'text-zinc-700'}`}>{c.name}</span></div>
                     {selectedCountry === c.id && <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white text-[10px]">✓</div>}
                   </button>
@@ -207,11 +205,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* GENDER FILTER MODAL */}
+      {/* GENDER MODAL */}
       {showGenderFilter && (
         <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
           <div className="bg-white text-black w-full max-w-xs rounded-lg overflow-hidden shadow-2xl animate-in zoom-in-95">
-            <div className="flex items-center justify-between p-4 border-b text-blue-500 font-bold">Gender Filter <button onClick={() => setShowGenderFilter(false)} className="text-zinc-400 text-2xl">✕</button></div>
+            <div className="flex items-center justify-between p-4 border-b text-blue-500 font-bold text-lg">Gender Filter <button onClick={() => setShowGenderFilter(false)} className="text-zinc-400 text-2xl">✕</button></div>
             <div className="p-2">
               {[
                 { id: 'all', label: 'Everyone', icon: '👤', color: 'text-blue-500' },
@@ -232,21 +230,18 @@ export default function Home() {
       {showOptions && (
           <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
               <div className="bg-white text-black w-full max-w-xs rounded-lg overflow-hidden shadow-2xl animate-in zoom-in-95">
-                  <div className="flex items-center justify-between p-4 border-b">
-                      <h3 className="text-blue-500 font-bold">Options</h3>
-                      <button onClick={() => setShowOptions(false)} className="text-zinc-400 text-2xl">✕</button>
-                  </div>
+                  <div className="flex items-center justify-between p-4 border-b text-blue-500 font-bold text-lg">Options <button onClick={() => setShowOptions(false)} className="text-zinc-400 text-2xl">✕</button></div>
                   <div className="p-2 space-y-1">
-                      <button onClick={() => { startMedia(facingMode === "user" ? "environment" : "user"); setFacingMode(facingMode === "user" ? "environment" : "user"); }} className="w-full flex items-center gap-4 p-3 hover:bg-zinc-100 rounded-lg transition-colors">
+                      <button onClick={() => { startMedia(facingMode === "user" ? "environment" : "user"); setFacingMode(facingMode === "user" ? "environment" : "user"); }} className="w-full flex items-center gap-4 p-3 hover:bg-zinc-100 rounded-lg">
                           <span className="text-xl">🔄</span> <span className="text-sm font-medium">Switch Camera</span>
                       </button>
                       <div className="flex items-center justify-between p-3">
-                          <div className="flex items-center gap-4"><span className="text-xl">📹</span> <span className="text-sm font-medium">Camera: <span className={cameraOn ? "text-green-500" : "text-red-500"}>{cameraOn ? "On" : "Off"}</span></span></div>
-                          <input type="checkbox" checked={cameraOn} onChange={toggleCamera} className="w-10 h-5 bg-zinc-200 rounded-full appearance-none checked:bg-green-500 relative transition-all before:content-[''] before:absolute before:w-4 before:h-4 before:bg-white before:rounded-full before:top-0.5 before:left-0.5 checked:before:left-5 before:transition-all cursor-pointer" />
+                          <div className="flex items-center gap-4"><span className="text-xl">📹</span> <span className="text-sm font-medium">Camera</span></div>
+                          <input type="checkbox" checked={cameraOn} onChange={() => { if(streamRef.current) { streamRef.current.getVideoTracks()[0].enabled = !cameraOn; setCameraOn(!cameraOn); }}} className="w-10 h-5 bg-zinc-200 rounded-full appearance-none checked:bg-green-500 relative transition-all before:content-[''] before:absolute before:w-4 before:h-4 before:bg-white before:rounded-full before:top-0.5 before:left-0.5 checked:before:left-5 before:transition-all cursor-pointer" />
                       </div>
                       <div className="flex items-center justify-between p-3">
-                          <div className="flex items-center gap-4"><span className="text-xl">🎤</span> <span className="text-sm font-medium">Mic: <span className={micOn ? "text-green-500" : "text-red-500"}>{micOn ? "On" : "Off"}</span></span></div>
-                          <input type="checkbox" checked={micOn} onChange={toggleMic} className="w-10 h-5 bg-zinc-200 rounded-full appearance-none checked:bg-green-500 relative transition-all before:content-[''] before:absolute before:w-4 before:h-4 before:bg-white before:rounded-full before:top-0.5 before:left-0.5 checked:before:left-5 before:transition-all cursor-pointer" />
+                          <div className="flex items-center gap-4"><span className="text-xl">🎤</span> <span className="text-sm font-medium">Mic</span></div>
+                          <input type="checkbox" checked={micOn} onChange={() => { if(streamRef.current) { streamRef.current.getAudioTracks()[0].enabled = !micOn; setMicOn(!micOn); }}} className="w-10 h-5 bg-zinc-200 rounded-full appearance-none checked:bg-green-500 relative transition-all before:content-[''] before:absolute before:w-4 before:h-4 before:bg-white before:rounded-full before:top-0.5 before:left-0.5 checked:before:left-5 before:transition-all cursor-pointer" />
                       </div>
                   </div>
               </div>
@@ -258,9 +253,9 @@ export default function Home() {
         <div className={`h-1/2 relative bg-zinc-900 border-b border-white/5 transition-all duration-700 ${showModal ? 'blur-2xl opacity-50' : 'opacity-100'}`}>
            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
            
-           {/* SEARCH OVERLAY (Restricted to Top Video) */}
+           {/* SEARCH OVERLAY */}
            {isSearching && (
-              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-md transition-opacity">
+              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-md">
                   <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4 shadow-[0_0_15px_rgba(59,130,246,0.3)]"></div>
                   <p className="text-[10px] font-black tracking-widest text-white uppercase bg-blue-600 px-4 py-1.5 rounded-full shadow-lg">{searchStatus}</p>
               </div>
@@ -277,7 +272,7 @@ export default function Home() {
 
            <div className="absolute top-4 left-4 z-50">
                 <h1 className="text-xl font-black italic tracking-tighter text-blue-500 bg-black/30 px-2 py-1 rounded">OMEGPT</h1>
-                {partnerCountry && !isSearching && <div className="mt-1 text-[10px] font-bold bg-black/60 px-2 py-1 rounded-full border border-white/10 w-fit animate-in slide-in-from-top-2">🌍 {partnerCountry}</div>}
+                {partnerCountry && !isSearching && <div className="mt-1 text-[10px] font-bold bg-black/60 px-2 py-1 rounded-full border border-white/10 w-fit">🌍 {partnerCountry}</div>}
             </div>
         </div>
 
@@ -286,12 +281,11 @@ export default function Home() {
            <video ref={localVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover ${facingMode === "user" ? "scale-x-[-1]" : ""}`} />
            {!showModal && (
              <div className="absolute right-4 bottom-24 flex flex-col gap-4">
-                <button onClick={() => setShowOptions(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all">⚙️</button>
-                <button onClick={() => setShowGenderFilter(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all">🚻</button>
-                <button onClick={() => setShowCountryFilter(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all">🏳️</button>
+                <button onClick={() => setShowOptions(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg">⚙️</button>
+                <button onClick={() => setShowGenderFilter(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg">🚻</button>
+                <button onClick={() => setShowCountryFilter(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg">🏳️</button>
              </div>
            )}
-           
            <div className="absolute bottom-6 right-4 z-[60]">
                 {partnerId && (
                     <button onClick={() => setIsMobileInputActive(!isMobileInputActive)} className={`w-14 h-14 rounded-full flex items-center justify-center border-2 border-white/20 shadow-2xl ${isMobileInputActive ? 'bg-zinc-800' : 'bg-blue-600 animate-bounce-subtle'}`}>
@@ -299,7 +293,6 @@ export default function Home() {
                     </button>
                 )}
             </div>
-
             {isMobileInputActive && (
               <div className="absolute bottom-6 left-4 right-20 z-[70] animate-in slide-in-from-bottom-2 duration-200">
                   <form onSubmit={sendMessage} className="flex bg-black/80 backdrop-blur-2xl border border-white/20 p-1 rounded-full shadow-2xl">
@@ -311,22 +304,19 @@ export default function Home() {
         </div>
       </main>
 
-      {/* INITIAL LOGIN MODAL */}
+      {/* LOGIN MODAL */}
       {showModal && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
-            <div className="relative max-w-sm w-full bg-zinc-900 border border-white/20 p-8 rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] text-center space-y-8 animate-in zoom-in-95 duration-500">
-                <div className="space-y-2">
-                  <h2 className="text-5xl font-black italic tracking-tighter text-blue-500 uppercase drop-shadow-md">OMEGPT</h2>
-                  <p className="text-[10px] font-bold text-white/40 tracking-[0.3em] uppercase">Video Chat Experience</p>
-                </div>
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm text-center">
+            <div className="relative max-w-sm w-full bg-zinc-900 border border-white/20 p-8 rounded-[40px] shadow-2xl space-y-8 animate-in zoom-in-95 duration-500">
+                <h2 className="text-5xl font-black italic tracking-tighter text-blue-500 uppercase">OMEGPT</h2>
                 <div className="space-y-4">
                   <p className="text-xs font-bold text-white uppercase tracking-wider block">Select Your Gender</p>
                   <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => setMyGender("male")} className={`py-6 rounded-3xl font-black border-2 transition-all ${myGender === "male" ? "bg-blue-600 border-blue-400 shadow-lg scale-95" : "bg-black/40 border-white/10"}`}>MALE</button>
-                    <button onClick={() => setMyGender("female")} className={`py-6 rounded-3xl font-black border-2 transition-all ${myGender === "female" ? "bg-pink-600 border-pink-400 shadow-lg scale-95" : "bg-black/40 border-white/10"}`}>FEMALE</button>
+                    <button onClick={() => setMyGender("male")} className={`py-6 rounded-3xl font-black border-2 transition-all ${myGender === "male" ? "bg-blue-600 border-blue-400 scale-95" : "bg-black/40 border-white/10"}`}>MALE</button>
+                    <button onClick={() => setMyGender("female")} className={`py-6 rounded-3xl font-black border-2 transition-all ${myGender === "female" ? "bg-pink-600 border-pink-400 scale-95" : "bg-black/40 border-white/10"}`}>FEMALE</button>
                   </div>
                 </div>
-                <button onClick={() => { if(!myGender) return alert("Please select gender!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[25px] font-black text-lg shadow-2xl transition-transform active:scale-95">START 🚀</button>
+                <button onClick={() => { if(!myGender) return alert("Select gender!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[25px] font-black text-lg">START 🚀</button>
             </div>
         </div>
       )}
@@ -337,6 +327,11 @@ export default function Home() {
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes bounce-subtle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
         .animate-bounce-subtle { animation: bounce-subtle 2s infinite ease-in-out; }
+        .animate-in { animation-duration: 0.3s; animation-fill-mode: both; }
+        @keyframes zoom-in-95 { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .zoom-in-95 { animation-name: zoom-in-95; }
+        @keyframes slideInBottom { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .slide-in-from-bottom-2 { animation-name: slideInBottom; }
       `}</style>
     </div>
   );
