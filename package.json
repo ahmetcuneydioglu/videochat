@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "cors": "^2.8.6",
+    "countries-list": "^3.2.2",
     "express": "^5.2.1",
     "geoip-lite": "^1.4.10",
     "mongoose": "^9.1.5",
