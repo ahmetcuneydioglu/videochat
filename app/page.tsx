@@ -32,6 +32,8 @@ export default function Home() {
   const [micOn, setMicOn] = useState(true);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   const [myGender, setMyGender] = useState<string | null>(null);
+  
+  // FİLTRE STATE'LERİ (Tik işaretleri için bu state'ler kullanılır)
   const [searchGender, setSearchGender] = useState("all"); 
   const [selectedCountry, setSelectedCountry] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -46,7 +48,6 @@ export default function Home() {
   const [matchNotification, setMatchNotification] = useState<string | null>(null);
   const [showSwipeHint, setShowSwipeHint] = useState(false);
 
-  // Ülke Emoji Yardımcı Fonksiyonu
   const getFlagEmoji = (countryCode: string) => {
     if (countryCode === "all" || countryCode === "UN") return "🌐";
     return countryCode.toUpperCase().replace(/./g, (char) => String.fromCodePoint(char.charCodeAt(0) + 127397));
@@ -69,8 +70,7 @@ export default function Home() {
     setHeight();
     window.addEventListener('resize', setHeight);
     
-    // Swipe Hint Sadece Mobilde (768px altı) görünecek
-    if (typeof window !== "undefined" && window.innerWidth < 768) {
+    if (window.innerWidth < 768) {
         const hasSwiped = localStorage.getItem("hasSwipedBefore");
         if (!hasSwiped) setShowSwipeHint(true);
     }
@@ -104,7 +104,6 @@ export default function Home() {
       setIsSearching(false); 
       initiatePeer(data.partnerId, data.initiator);
 
-      // Ülke Bildirimi İngilizce
       const countryObj = allCountries.find(c => c.id === data.country);
       const countryName = countryObj ? countryObj.name : "Global";
       setMatchNotification(`You matched with someone from ${countryName}`);
@@ -133,33 +132,38 @@ export default function Home() {
     peerRef.current = peer;
   }
 
-  const handleNext = (overrideGender?: string) => {
+  const handleNext = (overrideGender?: string, overrideCountry?: string) => {
     if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     
     const targetGender = overrideGender || searchGender;
+    const targetCountry = overrideCountry || selectedCountry;
+
     setPartnerId(null);
     setIsSearching(true);
     setMatchNotification(null);
     setIsMobileInputActive(false);
     
-    if (targetGender !== "all" || selectedCountry !== "all") {
+    // AKILLI KADEMELİ ARAMA MANTIĞI
+    if (targetGender !== "all" || targetCountry !== "all") {
       setSearchStatus("Searching by preference...");
+      
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      
       searchTimerRef.current = setTimeout(() => {
-        setSearchStatus("No matches, switching to global...");
+        setSearchStatus("No matches, looking for people in your area...");
+        
         setTimeout(() => {
-          setSearchGender("all");
-          setSelectedCountry("all");
+          // 15 saniye sonra hala kimse yoksa filtreleri esnet
           socket.emit("find_partner", { myGender, searchGender: "all", selectedCountry: "all" });
-          setSearchStatus("Searching...");
-        }, 2000);
+          setSearchStatus("Broadening search to global...");
+        }, 3000);
       }, 15000);
     } else {
       setSearchStatus("Searching...");
     }
 
-    socket.emit("find_partner", { myGender, searchGender: targetGender, selectedCountry });
+    socket.emit("find_partner", { myGender, searchGender: targetGender, selectedCountry: targetCountry });
   };
 
   const onTouchStart = (e: React.TouchEvent) => { touchEndX.current = null; touchStartX.current = e.targetTouches[0].clientX; };
@@ -182,7 +186,6 @@ export default function Home() {
     }
   };
 
-  // Kamera Switch Toggle
   const toggleCamera = () => {
     if (streamRef.current) {
       const track = streamRef.current.getVideoTracks()[0];
@@ -191,7 +194,6 @@ export default function Home() {
     }
   };
 
-  // Mikrofon Switch Toggle
   const toggleMic = () => {
     if (streamRef.current) {
       const track = streamRef.current.getAudioTracks()[0];
@@ -208,13 +210,8 @@ export default function Home() {
       style={{ height: 'var(--vv-height, 100vh)' }}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
-      {/* SWIPE HINT (Sadece Mobil) */}
-      {showSwipeHint && !showModal && partnerId && (
-        <div className="hidden md:flex fixed inset-y-0 right-0 z-[100] pointer-events-none items-center pr-10">
-          {/* Web'de boş döner, CSS md:hidden ile zaten mobilde kalır ama işi garantiye aldık */}
-        </div>
-      )}
-      {showSwipeHint && !showModal && partnerId && (
+      {/* SWIPE HINT (Sadece Mobil ve İlk Giriş) */}
+      {showSwipeHint && !showModal && !isSearching && partnerId && (
         <div className="md:hidden fixed inset-y-0 right-0 z-[100] pointer-events-none flex items-center pr-10">
            <div className="flex flex-col items-center animate-swipe-left text-blue-500">
             <span className="text-5xl">⬅️</span>
@@ -235,7 +232,15 @@ export default function Home() {
               <input type="text" placeholder="Search country..." className="w-full bg-zinc-100 rounded-full py-2 px-4 mb-4 outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
               <div className="max-h-[350px] overflow-y-auto no-scrollbar space-y-1">
                 {filteredCountries.map((c) => (
-                  <button key={c.id} onClick={() => { setSelectedCountry(c.id); setShowCountryFilter(false); handleNext(); }} className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl transition-all">
+                  <button 
+                    key={c.id} 
+                    onClick={() => { 
+                        setSelectedCountry(c.id); 
+                        setShowCountryFilter(false); 
+                        handleNext(undefined, c.id); 
+                    }} 
+                    className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl transition-all"
+                  >
                     <div className="flex items-center gap-3"><span>{c.flag}</span><span className={`text-sm font-medium ${selectedCountry === c.id ? 'text-blue-500' : 'text-zinc-700'}`}>{c.name}</span></div>
                     {selectedCountry === c.id && <span className="text-blue-500 font-bold">✓</span>}
                   </button>
@@ -252,9 +257,20 @@ export default function Home() {
                   <div className="flex items-center justify-between p-4 border-b text-blue-500 font-bold">Gender Filter <button onClick={() => setShowGenderFilter(false)} className="text-zinc-400 text-2xl">✕</button></div>
                   <div className="p-2">
                       {[{ id: 'all', label: 'Everyone', icon: '👤', color: 'text-blue-500' }, { id: 'female', label: 'Females Only', icon: '♀️', color: 'text-pink-500' }, { id: 'male', label: 'Males Only', icon: '♂️', color: 'text-blue-400' }].map((opt) => (
-                          <button key={opt.id} onClick={() => { setSearchGender(opt.id); setShowGenderFilter(false); handleNext(opt.id); }} className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl">
-                              <div className="flex items-center gap-4"><span className={`text-xl ${opt.color}`}>{opt.icon}</span><span className="text-sm font-medium">{opt.label}</span></div>
-                              {searchGender === opt.id && <span className="text-blue-500">✓</span>}
+                          <button 
+                            key={opt.id} 
+                            onClick={() => { 
+                                setSearchGender(opt.id); 
+                                setShowGenderFilter(false); 
+                                handleNext(opt.id); 
+                            }} 
+                            className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl"
+                          >
+                              <div className="flex items-center gap-4">
+                                  <span className={`text-xl ${opt.color}`}>{opt.icon}</span>
+                                  <span className={`text-sm font-medium ${searchGender === opt.id ? 'text-blue-500' : 'text-zinc-600'}`}>{opt.label}</span>
+                              </div>
+                              {searchGender === opt.id && <span className="text-blue-500 font-bold">✓</span>}
                           </button>
                       ))}
                   </div>
