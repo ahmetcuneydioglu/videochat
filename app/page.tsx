@@ -45,15 +45,27 @@ export default function Home() {
   const [isMobileInputActive, setIsMobileInputActive] = useState(false);
   const [showSwipeHint, setShowSwipeHint] = useState(false);
 
+  // KÖKTEN ÇÖZÜM: Ülke kodunu (TR, US) Emojiye çeviren yardımcı fonksiyon
+  const getFlagEmoji = (countryCode: string) => {
+    if (countryCode === "all") return "🌐";
+    return countryCode
+      .toUpperCase()
+      .replace(/./g, (char) => 
+        String.fromCodePoint(char.charCodeAt(0) + 127397)
+      );
+  };
+
   // Ülkeleri kütüphaneden çekip senin formatına dönüştürüyoruz
   const allCountries = useMemo(() => {
     const list = Object.entries(rawCountries).map(([code, data]) => ({
       id: code,
       name: (data as any).name,
-      // DÜZELTME: Hem emoji hem flag ihtimalini kontrol ediyoruz
-      flag: (data as any).emoji || (data as any).flag || "🏳️"
+      // Kütüphane verisine bakmadan direkt koddan emoji üretiyoruz
+      flag: getFlagEmoji(code)
     }));
-    return [{ id: "all", name: "All Countries", flag: "🌐" }, ...list];
+    // Alfabetik sıralama (Turkey, United States gibi)
+    const sortedList = list.sort((a, b) => a.name.localeCompare(b.name));
+    return [{ id: "all", name: "All Countries", flag: "🌐" }, ...sortedList];
   }, []);
 
   // Filtreleme mantığı
@@ -402,7 +414,6 @@ export default function Home() {
                 </div>
 
                 <div className="space-y-4">
-                  {/* DÜZELTME: Kaybolan başlık metni eklendi */}
                   <p className="text-xs font-bold text-white uppercase tracking-wider mb-2 block">Cinsiyetinizi Seçin</p>
                   <div className="grid grid-cols-2 gap-4">
                       <button 
