@@ -46,14 +46,13 @@ export default function Home() {
   const [showSwipeHint, setShowSwipeHint] = useState(false);
 
   // Ülkeleri kütüphaneden çekip senin formatına dönüştürüyoruz
-  // useMemo kullanarak her render'da yeniden hesaplanmasını engelliyoruz.
   const allCountries = useMemo(() => {
     const list = Object.entries(rawCountries).map(([code, data]) => ({
       id: code,
       name: (data as any).name,
-      flag: (data as any).emoji
+      // DÜZELTME: Hem emoji hem flag ihtimalini kontrol ediyoruz
+      flag: (data as any).emoji || (data as any).flag || "🏳️"
     }));
-    // En başa "All Countries" seçeneğini ekliyoruz
     return [{ id: "all", name: "All Countries", flag: "🌐" }, ...list];
   }, []);
 
@@ -395,33 +394,48 @@ export default function Home() {
       {/* GİRİŞ MODALI */}
       {showModal && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 text-center">
-            <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
-            <div className="relative max-w-sm w-full bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] space-y-8 animate-in zoom-in-95 duration-500">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
+            <div className="relative max-w-sm w-full bg-zinc-900 border border-white/20 p-8 rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] space-y-8 animate-in zoom-in-95 duration-500">
                 <div className="space-y-2">
                   <h2 className="text-5xl font-black italic tracking-tighter text-blue-500 uppercase drop-shadow-md">OMEGPT</h2>
+                  <p className="text-[10px] font-bold text-white/40 tracking-[0.3em] uppercase">Video Chat Experience</p>
                 </div>
+
                 <div className="space-y-4">
+                  {/* DÜZELTME: Kaybolan başlık metni eklendi */}
+                  <p className="text-xs font-bold text-white uppercase tracking-wider mb-2 block">Cinsiyetinizi Seçin</p>
                   <div className="grid grid-cols-2 gap-4">
                       <button 
                         onClick={() => setMyGender("male")} 
-                        className={`group relative py-6 rounded-3xl font-black transition-all duration-300 border-2 ${myGender === "male" ? "bg-blue-600 border-blue-400" : "bg-black/40 border-white/10"}`}
+                        className={`group relative py-6 rounded-3xl font-black transition-all duration-300 border-2 ${myGender === "male" ? "bg-blue-600 border-blue-400 shadow-lg scale-95" : "bg-black/40 border-white/10"}`}
                       >
-                          ♂️ ERKEK
+                          <span className="flex flex-col items-center gap-1">
+                            <span className="text-2xl">♂️</span>
+                            <span className="text-[10px] text-white">ERKEK</span>
+                          </span>
                       </button>
                       <button 
                         onClick={() => setMyGender("female")} 
-                        className={`group relative py-6 rounded-3xl font-black transition-all duration-300 border-2 ${myGender === "female" ? "bg-pink-600 border-pink-400" : "bg-black/40 border-white/10"}`}
+                        className={`group relative py-6 rounded-3xl font-black transition-all duration-300 border-2 ${myGender === "female" ? "bg-pink-600 border-pink-400 shadow-lg scale-95" : "bg-black/40 border-white/10"}`}
                       >
-                          ♀️ KADIN
+                          <span className="flex flex-col items-center gap-1">
+                            <span className="text-2xl">♀️</span>
+                            <span className="text-[10px] text-white">KADIN</span>
+                          </span>
                       </button>
                   </div>
                 </div>
+
                 <button 
-                  onClick={() => { if(!myGender) return alert("Cinsiyet seçin!"); setShowModal(false); handleNext(); }} 
-                  className="w-full bg-white text-black py-5 rounded-[25px] font-black text-lg uppercase"
+                  onClick={() => { if(!myGender) return alert("Devam etmek için bir cinsiyet seçmelisiniz!"); setShowModal(false); handleNext(); }} 
+                  className="w-full bg-white text-black py-5 rounded-[25px] font-black text-lg uppercase transition-transform active:scale-95 shadow-2xl"
                 >
                   Sohbete Başla 🚀
                 </button>
+                
+                <p className="text-[9px] text-white/30 leading-relaxed px-4">
+                  Hizmet Şartlarımızı kabul etmiş sayılırsınız.
+                </p>
             </div>
         </div>
       )}
