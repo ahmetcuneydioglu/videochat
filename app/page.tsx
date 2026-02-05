@@ -19,6 +19,7 @@ export default function Home() {
   const mobileChatEndRef = useRef<HTMLDivElement>(null);
   const peerRef = useRef<Peer.Instance | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
@@ -38,6 +39,7 @@ export default function Home() {
   
   const [partnerCountry, setPartnerCountry] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchStatus, setSearchStatus] = useState("Yeni biri aranıyor...");
   const [partnerId, setPartnerId] = useState<string | null>(null);
   const [messages, setMessages] = useState<{ sender: string, text: string }[]>([]);
   const [inputText, setInputText] = useState("");
@@ -126,6 +128,10 @@ export default function Home() {
     if (isMounted) startMedia();
 
     socket.on("partner_found", (data) => {
+      // Eşleşme bulununca zamanlayıcıyı durdur
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      setSearchStatus("Yeni biri aranıyor...");
+      
       setMessages([]); setPartnerId(data.partnerId); setPartnerCountry(data.country);
       setIsSearching(false); initiatePeer(data.partnerId, data.initiator);
     });
@@ -146,7 +152,7 @@ export default function Home() {
     return () => {
       socket.off("partner_found"); socket.off("partner_disconnected"); socket.off("signal");
     };
-  }, [isMounted]);
+  }, [isMounted, myGender, searchGender, selectedCountry]);
 
   function initiatePeer(targetId: string, initiator: boolean) {
     if (!streamRef.current) return;
@@ -163,11 +169,35 @@ export default function Home() {
     peerRef.current = peer;
   }
 
-  const handleNext = () => {
+  const handleNext = (overrideGender?: string) => {
     if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    setPartnerId(null); setIsSearching(true); setIsMobileInputActive(false);
-    socket.emit("find_partner", { myGender, searchGender, selectedCountry });
+    
+    const targetGender = overrideGender || searchGender;
+    setPartnerId(null); 
+    setIsSearching(true); 
+    setIsMobileInputActive(false);
+
+    // KADEMELİ ARAMA MANTIĞI
+    if (targetGender !== "all") {
+      setSearchStatus("Tercihinize uygun birisi aranıyor...");
+      
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      
+      searchTimerRef.current = setTimeout(() => {
+        setSearchStatus("Uygun birisi bulunamadı, genel aramaya geçiliyor...");
+        
+        setTimeout(() => {
+          setSearchGender("all");
+          socket.emit("find_partner", { myGender, searchGender: "all", selectedCountry });
+          setSearchStatus("Genel arama yapılıyor...");
+        }, 2000);
+      }, 7000);
+    } else {
+      setSearchStatus("Yeni biri aranıyor...");
+    }
+
+    socket.emit("find_partner", { myGender, searchGender: targetGender, selectedCountry });
   };
 
   const sendMessage = (e: React.FormEvent) => {
@@ -282,7 +312,7 @@ export default function Home() {
                       ].map((option) => (
                           <button 
                             key={option.id}
-                            onClick={() => { setSearchGender(option.id); setShowGenderFilter(false); handleNext(); }}
+                            onClick={() => { setSearchGender(option.id); setShowGenderFilter(false); handleNext(option.id); }}
                             className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl transition-all group"
                           >
                               <div className="flex items-center gap-4">
@@ -342,7 +372,7 @@ export default function Home() {
                {isSearching && (
                   <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
                       <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4 shadow-[0_0_15px_rgba(59,130,246,0.5)]"></div>
-                      <p className="text-xs font-black tracking-widest text-white uppercase bg-blue-600 px-4 py-2 rounded-full shadow-lg">Yeni biri aranıyor...</p>
+                      <p className="text-xs font-black tracking-widest text-white uppercase bg-blue-600 px-4 py-2 rounded-full shadow-lg">{searchStatus}</p>
                   </div>
               )}
 
@@ -394,7 +424,7 @@ export default function Home() {
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 bg-zinc-50 border-t flex items-center gap-3">
-            <button onClick={handleNext} className="bg-black text-white px-6 py-3 rounded-xl font-bold uppercase text-xs">Sıradaki</button>
+            <button onClick={() => handleNext()} className="bg-black text-white px-6 py-3 rounded-xl font-bold uppercase text-xs">Sıradaki</button>
             <form onSubmit={sendMessage} className="flex-1 flex gap-2">
                 <input value={inputText} onChange={(e) => setInputText(e.target.value)} className="flex-1 border border-zinc-300 p-3 rounded-xl text-black outline-none" placeholder="Mesaj yaz..." />
                 <button type="submit" className="bg-blue-600 text-white px-5 rounded-xl font-bold">➤</button>
@@ -455,6 +485,8 @@ export default function Home() {
         html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden !important; position: fixed; background: black; overscroll-behavior: none; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes bounce-subtle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        .animate-bounce-subtle { animation: bounce-subtle 2s infinite ease-in-out; }
       `}</style>
     </div>
   );

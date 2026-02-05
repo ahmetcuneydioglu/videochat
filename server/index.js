@@ -7,9 +7,8 @@ const geoip = require('geoip-lite');
 
 const app = express();
 
-// CORS Ayarları - Canlıda sorun yaşamamak için origin'i Render URL'nizle güncelleyeceğiz
 app.use(cors({
-  origin: "*", // Şimdilik her yerden erişime izin veriyoruz (Geliştirme kolaylığı için)
+  origin: "*", 
   credentials: true
 }));
 
@@ -23,18 +22,15 @@ app.use((req, res, next) => {
     }
 });
 
-// Render/Canlı ortamda HTTPS işini platform halleder, biz standart http oluştururuz
 const server = http.createServer(app);
 
-// 1. MONGODB BAĞLANTISI
-// ÖNEMLİ: Yarın burayı MongoDB Atlas adresiyle (process.env.MONGODB_URI) değiştireceğiz
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ahmetcnd:Ahmet263271@videochat.vok6vud.mongodb.net/?appName=videochat';
 
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('✅ MongoDB Bağlantısı Başarılı'))
   .catch(err => console.error('❌ MongoDB Bağlantı Hatası:', err));
 
-// 2. MODELLER (Aynı kalıyor)
+// MODELLER
 const Ban = mongoose.model('Ban', new mongoose.Schema({ 
     ip: String, reason: String, date: { type: Date, default: Date.now } 
 }));
@@ -45,29 +41,24 @@ const Log = mongoose.model('Log', new mongoose.Schema({
     userId: String, userIP: String, action: String, targetId: String, duration: Number, date: { type: Date, default: Date.now }
 }));
 
-// SOCKET.IO AYARLARI
 const io = new Server(server, {
-  cors: {
-    origin: "*", 
-    methods: ["GET", "POST"],
-    credentials: true
-  }
+  cors: { origin: "*", methods: ["GET", "POST"], credentials: true }
 });
 
-// 3. ANLIK TAKİP MERKEZİ (Mantık Aynı)
+// BELLEKTEKİ VERİLER (Admin Panel İçin Gerekli)
 let globalQueue = [];
 const activeMatches = new Map();
 const matchTimes = new Map();
 const userDetails = new Map();
 
 io.on('connection', async (socket) => {
-  // Canlı ortamda proxy IP'sini almak için
   let userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
   if (userIP === '::1' || userIP === '127.0.0.1') userIP = '176.234.224.0';
   
   const geo = geoip.lookup(userIP);
   const countryCode = geo ? geo.country : 'UN';
 
+  // Admin paneli için kullanıcı detaylarını kaydet
   userDetails.set(socket.id, {
     id: socket.id,
     ip: userIP,
@@ -80,42 +71,51 @@ io.on('connection', async (socket) => {
   });
 
   const isBanned = await Ban.findOne({ ip: userIP });
-  if (isBanned) {
-    socket.emit('error_msg', 'Erişiminiz engellenmiştir.');
-    return socket.disconnect();
-  }
+  if (isBanned) return socket.disconnect();
 
-  socket.on('find_partner', async ({ myGender, searchGender, onlySameCountry }) => {
+  socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
     const u = userDetails.get(socket.id);
     if (u) u.skips += 1;
 
+    // Eğer zaten bir eşleşmesi varsa süreyi hesapla ve logla
     if (activeMatches.has(socket.id)) {
         const duration = Math.floor((Date.now() - (matchTimes.get(socket.id) || Date.now())) / 1000);
         new Log({ userId: socket.id, userIP, action: 'SKIPPED', duration }).save();
     }
 
-    globalQueue = globalQueue.filter(u => u.id !== socket.id);
+    // Kuyruğu temizle
+    globalQueue = globalQueue.filter(item => item.id !== socket.id);
 
-    const tryMatch = (forceGlobal = false) => {
+    const tryMatch = () => {
       const partnerIndex = globalQueue.findIndex(p => {
-        const genderMatch = (searchGender === 'all' || searchGender === p.myGender) && (p.searchGender === 'all' || p.searchGender === myGender);
-        let countryMatch = true;
-        if (!forceGlobal && (onlySameCountry || p.onlySameCountry)) countryMatch = (p.countryCode === countryCode);
+        // Çapraz Cinsiyet Kontrolü
+        const genderMatch = (searchGender === 'all' || searchGender === p.myGender) && 
+                            (p.searchGender === 'all' || p.searchGender === myGender);
+        
+        // Ülke Kontrolü
+        const countryMatch = (selectedCountry === 'all' || selectedCountry === p.countryCode);
+        
         return genderMatch && countryMatch && p.id !== socket.id;
       });
 
       if (partnerIndex !== -1) {
         const partner = globalQueue[partnerIndex];
         globalQueue.splice(partnerIndex, 1);
+        
+        // Eşleşme Bilgilerini Kaydet
         activeMatches.set(socket.id, partner.id);
         activeMatches.set(partner.id, socket.id);
+        
+        const now = Date.now();
+        matchTimes.set(socket.id, now);
+        matchTimes.set(partner.id, now);
+
+        // UserDetails Güncelle (Admin Panel İçin)
         const u1 = userDetails.get(socket.id);
         const u2 = userDetails.get(partner.id);
         if (u1) { u1.status = 'BUSY'; u1.currentPartner = partner.id; }
         if (u2) { u2.status = 'BUSY'; u2.currentPartner = socket.id; }
-        const now = Date.now();
-        matchTimes.set(socket.id, now);
-        matchTimes.set(partner.id, now);
+
         io.to(socket.id).emit('partner_found', { partnerId: partner.id, initiator: true, country: partner.countryCode });
         io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false, country: countryCode });
         return true;
@@ -123,18 +123,8 @@ io.on('connection', async (socket) => {
       return false;
     };
 
-    if (!tryMatch(false)) {
-      globalQueue.push({ id: socket.id, myGender, searchGender, countryCode, onlySameCountry });
-      if (onlySameCountry) {
-        setTimeout(() => {
-          const userInQueue = globalQueue.find(u => u.id === socket.id);
-          if (userInQueue && userInQueue.onlySameCountry) {
-            userInQueue.onlySameCountry = false;
-            socket.emit('waiting_msg', 'Global eşleşmeye geçiliyor...');
-            tryMatch(true); 
-          }
-        }, 5000);
-      }
+    if (!tryMatch()) {
+      globalQueue.push({ id: socket.id, myGender, searchGender, countryCode, selectedCountry });
     }
   });
 
@@ -144,11 +134,13 @@ io.on('connection', async (socket) => {
 
   socket.on('report_user', async ({ targetId, screenshot }) => {
     try {
-      const sockets = await io.fetchSockets();
-      const targetSocket = sockets.find(s => s.id === targetId);
-      const targetIP = targetSocket ? (targetSocket.handshake.headers['x-forwarded-for'] || targetSocket.handshake.address) : "Bilinmiyor";
-      new Report({ reporterId: socket.id, reportedId: targetId, reportedIP: targetIP, screenshot }).save();
       const targetProfile = userDetails.get(targetId);
+      new Report({ 
+        reporterId: socket.id, 
+        reportedId: targetId, 
+        reportedIP: targetProfile ? targetProfile.ip : "Bilinmiyor", 
+        screenshot 
+      }).save();
       if (targetProfile) targetProfile.reports += 1;
       new Log({ userId: socket.id, userIP, action: 'REPORTED', targetId }).save();
     } catch (err) { console.error(err); }
@@ -168,30 +160,20 @@ io.on('connection', async (socket) => {
   });
 });
 
-// --- ADMIN ROTALARI ---
+// --- ADMIN API ROTALARI ---
 app.get('/api/admin/active-users', (req, res) => res.json(Array.from(userDetails.values())));
 
 app.get('/api/admin/stats', async (req, res) => {
-    const stats = {
+    res.json({
         activeUsers: userDetails.size,
         totalBans: await Ban.countDocuments(),
         pendingReports: await Report.countDocuments(),
-    };
-    res.json(stats);
+    });
 });
 
-// --- ADMIN ROTALARI EKLEMELER ---
-app.get('/api/reports', async (req, res) => {
-    const reports = await Report.find().sort({ date: -1 });
-    res.json(reports);
-});
+app.get('/api/reports', async (req, res) => res.json(await Report.find().sort({ date: -1 })));
+app.get('/api/bans', async (req, res) => res.json(await Ban.find().sort({ date: -1 })));
 
-app.get('/api/bans', async (req, res) => {
-    const bans = await Ban.find().sort({ date: -1 });
-    res.json(bans);
-});
-
-// Rapor silme ve Ban kaldırma için de şunları ekleyebilirsin:
 app.delete('/api/reports/:id', async (req, res) => {
     await Report.findByIdAndDelete(req.params.id);
     res.json({ success: true });
@@ -202,7 +184,6 @@ app.delete('/api/bans/:ip', async (req, res) => {
     res.json({ success: true });
 });
 
-// Portu Render'ın insafına bırakıyoruz
 const PORT = process.env.PORT || 5001;
 server.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Sunucu ${PORT} portunda yayında.`);
