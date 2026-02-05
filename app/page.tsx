@@ -9,17 +9,41 @@ if (typeof window !== "undefined" && typeof (window as any).global === "undefine
 
 const socket = io("https://videochat-1qxi.onrender.com/", { transports: ["websocket"], secure: true });
 
-// Ülke listesi (Görseldeki yapıya göre genişletilebilir)
+// Genişletilmiş Ülke Listesi
 const countries = [
   { id: "all", name: "All Countries", flag: "🌐" },
   { id: "TR", name: "Turkey", flag: "🇹🇷" },
   { id: "US", name: "United States", flag: "🇺🇸" },
+  { id: "GB", name: "United Kingdom", flag: "🇬🇧" },
+  { id: "DE", name: "Germany", flag: "🇩🇪" },
+  { id: "FR", name: "France", flag: "🇫🇷" },
+  { id: "IT", name: "Italy", flag: "🇮🇹" },
+  { id: "ES", name: "Spain", flag: "🇪🇸" },
+  { id: "RU", name: "Russia", flag: "🇷🇺" },
+  { id: "BR", name: "Brazil", flag: "🇧🇷" },
+  { id: "CA", name: "Canada", flag: "🇨🇦" },
+  { id: "AU", name: "Australia", flag: "🇦🇺" },
+  { id: "NL", name: "Netherlands", flag: "🇳🇱" },
+  { id: "BE", name: "Belgium", flag: "🇧🇪" },
+  { id: "SE", name: "Sweden", flag: "🇸🇪" },
+  { id: "NO", name: "Norway", flag: "🇳🇴" },
+  { id: "DK", name: "Denmark", flag: "🇩🇰" },
+  { id: "FI", name: "Finland", flag: "🇫🇮" },
+  { id: "PL", name: "Poland", flag: "🇵🇱" },
+  { id: "UA", name: "Ukraine", flag: "🇺🇦" },
+  { id: "AZ", name: "Azerbaijan", flag: "🇦🇿" },
+  { id: "GR", name: "Greece", flag: "🇬🇷" },
+  { id: "SA", name: "Saudi Arabia", flag: "🇸🇦" },
+  { id: "AE", name: "UAE", flag: "🇦🇪" },
+  { id: "JP", name: "Japan", flag: "🇯🇵" },
+  { id: "KR", name: "South Korea", flag: "🇰🇷" },
+  { id: "CN", name: "China", flag: "🇨🇳" },
+  { id: "IN", name: "India", flag: "🇮🇳" },
+  { id: "EG", name: "Egypt", flag: "🇪🇬" },
+  { id: "MA", name: "Morocco", flag: "🇲🇦" },
+  { id: "AR", name: "Argentina", flag: "🇦🇷" },
   { id: "AL", name: "Albania", flag: "🇦🇱" },
   { id: "DZ", name: "Algeria", flag: "🇩🇿" },
-  { id: "AO", name: "Angola", flag: "🇦🇴" },
-  { id: "AR", name: "Argentina", flag: "🇦🇷" },
-  { id: "AM", name: "Armenia", flag: "🇦🇲" },
-  { id: "AU", name: "Australia", flag: "🇦🇺" },
 ];
 
 export default function Home() {
@@ -43,7 +67,7 @@ export default function Home() {
   // Medya ve Filtre Durumları
   const [cameraOn, setCameraOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
-  const [audioOn, setAudioOn] = useState(true);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   const [myGender, setMyGender] = useState<string | null>(null);
   const [searchGender, setSearchGender] = useState("all"); 
   const [selectedCountry, setSelectedCountry] = useState("all");
@@ -82,15 +106,33 @@ export default function Home() {
     mobileChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isMobileInputActive]);
 
-  useEffect(() => {
-    async function startCamera() {
-      try {
-        const userStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        streamRef.current = userStream;
-        if (localVideoRef.current) localVideoRef.current.srcObject = userStream;
-      } catch (err) { console.error("Kamera hatası:", err); }
+  // Medya Akışını Başlatan Fonksiyon
+  const startMedia = async (mode: "user" | "environment" = facingMode) => {
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: mode },
+        audio: true
+      });
+      streamRef.current = newStream;
+      if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
+      
+      // Peer bağlantısı varsa track'i güncelle
+      if (peerRef.current && (peerRef.current as any).connected) {
+          const videoTrack = newStream.getVideoTracks()[0];
+          const audioTrack = newStream.getAudioTracks()[0];
+          peerRef.current.replaceTrack((peerRef.current as any).streams[0].getVideoTracks()[0], videoTrack, (peerRef.current as any).streams[0]);
+          peerRef.current.replaceTrack((peerRef.current as any).streams[0].getAudioTracks()[0], audioTrack, (peerRef.current as any).streams[0]);
+      }
+    } catch (err) {
+      console.error("Kamera hatası:", err);
     }
-    if (isMounted) startCamera();
+  };
+
+  useEffect(() => {
+    if (isMounted) startMedia();
 
     socket.on("partner_found", (data) => {
       setMessages([]); setPartnerId(data.partnerId); setPartnerCountry(data.country);
@@ -146,19 +188,28 @@ export default function Home() {
     }
   };
 
-  const toggleCamera = () => {
-    if (streamRef.current) {
-      const track = streamRef.current.getVideoTracks()[0];
-      track.enabled = !track.enabled;
-      setCameraOn(track.enabled);
-    }
+  // Kamera Değiştirme
+  const switchCamera = () => {
+    const newMode = facingMode === "user" ? "environment" : "user";
+    setFacingMode(newMode);
+    startMedia(newMode);
   };
 
+  // Mikrofon Kontrolü
   const toggleMic = () => {
     if (streamRef.current) {
       const track = streamRef.current.getAudioTracks()[0];
-      track.enabled = !track.enabled;
-      setMicOn(track.enabled);
+      track.enabled = !micOn;
+      setMicOn(!micOn);
+    }
+  };
+
+  // Kamera Kontrolü (Aç/Kapat)
+  const toggleCamera = () => {
+    if (streamRef.current) {
+      const track = streamRef.current.getVideoTracks()[0];
+      track.enabled = !cameraOn;
+      setCameraOn(!cameraOn);
     }
   };
 
@@ -171,7 +222,6 @@ export default function Home() {
     }
   };
 
-  // Ülke arama filtresi
   const filteredCountries = countries.filter(c => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -269,7 +319,7 @@ export default function Home() {
                       <button onClick={() => setShowOptions(false)} className="text-zinc-400 text-2xl">✕</button>
                   </div>
                   <div className="p-2 space-y-1">
-                      <button className="w-full flex items-center gap-4 p-3 hover:bg-zinc-100 rounded-lg transition-colors">
+                      <button onClick={switchCamera} className="w-full flex items-center gap-4 p-3 hover:bg-zinc-100 rounded-lg transition-colors">
                           <span className="text-xl">🔄</span> <span className="text-sm font-medium">Switch Camera</span>
                       </button>
                       <div className="flex items-center justify-between p-3">
@@ -306,7 +356,7 @@ export default function Home() {
 
           {/* ALT VİDEO */}
           <div className="absolute bottom-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900">
-            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
+            <video ref={localVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover ${facingMode === "user" ? "scale-x-[-1]" : ""}`} />
             
             {/* SAĞ MENÜ İKONLARI */}
             <div className="md:hidden absolute right-4 bottom-24 z-[70] flex flex-col gap-4 pointer-events-auto">
