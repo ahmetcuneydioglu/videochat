@@ -154,7 +154,7 @@ export default function Home() {
           socket.emit("find_partner", { myGender, searchGender: "all", selectedCountry: "all" });
           setSearchStatus("Searching...");
         }, 2000);
-      }, 7000);
+      }, 15000);
     } else {
       setSearchStatus("Searching...");
     }
