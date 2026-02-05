@@ -9,7 +9,6 @@ if (typeof window !== "undefined" && typeof (window as any).global === "undefine
 
 const socket = io("https://videochat-1qxi.onrender.com/", { transports: ["websocket"], secure: true });
 
-// Genişletilmiş Ülke Listesi
 const countries = [
   { id: "all", name: "All Countries", flag: "🌐" },
   { id: "TR", name: "Turkey", flag: "🇹🇷" },
@@ -44,6 +43,39 @@ const countries = [
   { id: "AR", name: "Argentina", flag: "🇦🇷" },
   { id: "AL", name: "Albania", flag: "🇦🇱" },
   { id: "DZ", name: "Algeria", flag: "🇩🇿" },
+  { id: "AF", name: "Afghanistan", flag: "🇦🇫" },
+  { id: "AO", name: "Angola", flag: "🇦🇴" },
+  { id: "AT", name: "Austria", flag: "🇦🇹" },
+  { id: "BD", name: "Bangladesh", flag: "🇧🇩" },
+  { id: "BG", name: "Bulgaria", flag: "🇧🇬" },
+  { id: "CH", name: "Switzerland", flag: "🇨🇭" },
+  { id: "CL", name: "Chile", flag: "🇨🇱" },
+  { id: "CO", name: "Colombia", flag: "🇨🇴" },
+  { id: "CZ", name: "Czech Republic", flag: "🇨🇿" },
+  { id: "GE", name: "Georgia", flag: "🇬🇪" },
+  { id: "HU", name: "Hungary", flag: "🇭🇺" },
+  { id: "ID", name: "Indonesia", flag: "🇮🇩" },
+  { id: "IE", name: "Ireland", flag: "🇮🇪" },
+  { id: "IL", name: "Israel", flag: "🇮🇱" },
+  { id: "IQ", name: "Iraq", flag: "🇮🇶" },
+  { id: "IR", name: "Iran", flag: "🇮🇷" },
+  { id: "JO", name: "Jordan", flag: "🇯🇴" },
+  { id: "KZ", name: "Kazakhstan", flag: "🇰🇿" },
+  { id: "LB", name: "Lebanon", flag: "🇱🇧" },
+  { id: "MX", name: "Mexico", flag: "🇲🇽" },
+  { id: "MY", name: "Malaysia", flag: "🇲🇾" },
+  { id: "NG", name: "Nigeria", flag: "🇳🇬" },
+  { id: "NZ", name: "New Zealand", flag: "🇳🇿" },
+  { id: "PK", name: "Pakistan", flag: "🇵🇰" },
+  { id: "PT", name: "Portugal", flag: "🇵🇹" },
+  { id: "QA", name: "Qatar", flag: "🇶🇦" },
+  { id: "RO", name: "Romania", flag: "🇷🇴" },
+  { id: "SG", name: "Singapore", flag: "🇸🇬" },
+  { id: "TH", name: "Thailand", flag: "🇹🇭" },
+  { id: "TN", name: "Tunisia", flag: "🇹🇳" },
+  { id: "UZ", name: "Uzbekistan", flag: "🇺🇿" },
+  { id: "VN", name: "Vietnam", flag: "🇻🇳" },
+  { id: "ZA", name: "South Africa", flag: "🇿🇦" }
 ];
 
 export default function Home() {
@@ -58,13 +90,11 @@ export default function Home() {
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
 
-  // Modal Durumları
   const [showModal, setShowModal] = useState(true);
   const [showOptions, setShowOptions] = useState(false);
   const [showGenderFilter, setShowGenderFilter] = useState(false);
   const [showCountryFilter, setShowCountryFilter] = useState(false);
   
-  // Medya ve Filtre Durumları
   const [cameraOn, setCameraOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
@@ -106,7 +136,6 @@ export default function Home() {
     mobileChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isMobileInputActive]);
 
-  // Medya Akışını Başlatan Fonksiyon
   const startMedia = async (mode: "user" | "environment" = facingMode) => {
     try {
       if (streamRef.current) {
@@ -119,7 +148,6 @@ export default function Home() {
       streamRef.current = newStream;
       if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
       
-      // Peer bağlantısı varsa track'i güncelle
       if (peerRef.current && (peerRef.current as any).connected) {
           const videoTrack = newStream.getVideoTracks()[0];
           const audioTrack = newStream.getAudioTracks()[0];
@@ -188,14 +216,12 @@ export default function Home() {
     }
   };
 
-  // Kamera Değiştirme
   const switchCamera = () => {
     const newMode = facingMode === "user" ? "environment" : "user";
     setFacingMode(newMode);
     startMedia(newMode);
   };
 
-  // Mikrofon Kontrolü
   const toggleMic = () => {
     if (streamRef.current) {
       const track = streamRef.current.getAudioTracks()[0];
@@ -204,7 +230,6 @@ export default function Home() {
     }
   };
 
-  // Kamera Kontrolü (Aç/Kapat)
   const toggleCamera = () => {
     if (streamRef.current) {
       const track = streamRef.current.getVideoTracks()[0];
@@ -239,7 +264,7 @@ export default function Home() {
       
       {/* COUNTRY FILTER MODAL */}
       {showCountryFilter && (
-        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white text-black w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-4 border-b flex items-center justify-between">
               <h3 className="text-blue-500 font-bold text-lg">Country Filter</h3>
@@ -279,7 +304,7 @@ export default function Home() {
 
       {/* GENDER FILTER MODAL */}
       {showGenderFilter && (
-          <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
               <div className="bg-white text-black w-full max-w-xs rounded-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
                   <div className="flex items-center justify-between p-4 border-b">
                       <h3 className="text-blue-500 font-bold text-lg">Gender Filter</h3>
@@ -296,7 +321,7 @@ export default function Home() {
                           <button 
                             key={option.id}
                             onClick={() => { setSearchGender(option.id); setShowGenderFilter(false); handleNext(); }}
-                            className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-lg transition-colors group"
+                            className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl transition-all group"
                           >
                               <div className="flex items-center gap-4">
                                   <span className={`text-xl ${option.color}`}>{option.icon}</span>
@@ -312,7 +337,7 @@ export default function Home() {
 
       {/* CHAT OPTIONS MODAL */}
       {showOptions && (
-          <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
               <div className="bg-white text-black w-full max-w-xs rounded-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
                   <div className="flex items-center justify-between p-4 border-b">
                       <h3 className="text-blue-500 font-bold">Chat Options</h3>
@@ -330,79 +355,76 @@ export default function Home() {
                           <div className="flex items-center gap-4"><span className="text-xl">🎤</span> <span className="text-sm font-medium">Mic: <span className={micOn ? "text-green-500" : "text-red-500"}>{micOn ? "On" : "Off"}</span></span></div>
                           <input type="checkbox" checked={micOn} onChange={toggleMic} className="w-10 h-5 bg-zinc-200 rounded-full appearance-none checked:bg-green-500 relative transition-all before:content-[''] before:absolute before:w-4 before:h-4 before:bg-white before:rounded-full before:top-0.5 before:left-0.5 checked:before:left-5 before:transition-all cursor-pointer" />
                       </div>
-                      <button className="w-full flex items-center gap-4 p-3 hover:bg-zinc-100 rounded-lg border-t mt-2"><span className="text-xl">👑</span> <span className="text-blue-500 font-bold text-sm">Unlock All Features</span></button>
                   </div>
               </div>
           </div>
       )}
 
-      {/* MAIN LAYOUT */}
+      {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative w-full h-full">
         <div className="flex-1 relative md:w-[450px] lg:w-[500px] h-full bg-black md:border-r border-zinc-800 z-10 overflow-hidden">
-          {/* ÜST VİDEO */}
-          <div className="absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5">
-            {isSearching && (
-                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
-                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p className="text-[10px] font-black tracking-widest text-blue-400 uppercase">Searching...</p>
-                </div>
-            )}
+          
+          {/* ÜST VİDEO: Yabancı (Blur Eklendi) */}
+          <div className={`absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5 transition-all duration-700 ${showModal ? 'blur-2xl scale-110 opacity-50' : 'blur-0 scale-100 opacity-100'}`}>
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
             <div className="md:hidden absolute top-4 left-4 z-50">
                 <h1 className="text-xl font-black italic tracking-tighter text-blue-500 bg-black/30 px-2 py-1 rounded">OMEGPT</h1>
-                {partnerCountry && <div className="mt-1 text-[10px] font-bold bg-black/60 px-2 py-1 rounded-full border border-white/10 w-fit">🌍 {partnerCountry}</div>}
             </div>
           </div>
 
-          {/* ALT VİDEO */}
-          <div className="absolute bottom-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900">
+          {/* ALT VİDEO: Sen (Blur Eklendi) */}
+          <div className={`absolute bottom-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 transition-all duration-700 ${showModal ? 'blur-2xl scale-110' : 'blur-0 scale-100'}`}>
             <video ref={localVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover ${facingMode === "user" ? "scale-x-[-1]" : ""}`} />
-            
-            {/* SAĞ MENÜ İKONLARI */}
-            <div className="md:hidden absolute right-4 bottom-24 z-[70] flex flex-col gap-4 pointer-events-auto">
-                <button onClick={() => setShowOptions(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all">
-                    <span className="text-xl">⚙️</span>
-                </button>
-                <button onClick={() => setShowGenderFilter(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all">
-                    <span className="text-xl">🚻</span>
-                </button>
-                <button onClick={() => setShowCountryFilter(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all">
-                    <span className="text-xl">🏳️</span>
-                </button>
-            </div>
-
-            {/* MESAJ AKIŞI */}
-            <div className="md:hidden absolute bottom-24 left-4 right-20 z-40 flex flex-col justify-end max-h-[140px] overflow-y-auto pointer-events-none no-scrollbar">
-                <div className="flex flex-col gap-1.5 p-2">
-                    {messages.map((m, i) => (
-                        <div key={i} className="bg-black/60 backdrop-blur-lg px-3 py-1.5 rounded-2xl text-[12px] border border-white/5 w-fit max-w-full break-words text-white">
-                            <b className={m.sender === "Ben" ? "text-blue-400" : "text-pink-400"}>{m.sender}:</b> {m.text}
-                        </div>
-                    ))}
-                    <div ref={mobileChatEndRef} />
-                </div>
-            </div>
-
-            {/* MESAJ İKONU VE INPUT */}
-            <div className="md:hidden absolute bottom-6 right-4 z-[60] pointer-events-auto">
-                {partnerId && (
-                    <button onClick={() => setIsMobileInputActive(!isMobileInputActive)} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all border-2 border-white/20 ${isMobileInputActive ? 'bg-zinc-800' : 'bg-blue-600'}`}>
-                        <span className="text-2xl text-white leading-none">{isMobileInputActive ? '✕' : '💬'}</span>
-                    </button>
-                )}
-            </div>
-            {isMobileInputActive && (
-                <div className="md:hidden absolute bottom-6 left-4 right-20 z-[70] animate-in slide-in-from-bottom-2 duration-200">
-                    <form onSubmit={sendMessage} className="flex bg-black/90 backdrop-blur-2xl border border-white/20 p-1 rounded-full shadow-2xl">
-                        <input autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Yaz..." className="flex-1 bg-transparent px-4 py-2 text-sm outline-none text-white w-full" />
-                        <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center"> ➤ </button>
-                    </form>
-                </div>
-            )}
           </div>
+
+          {/* ARAYÜZ KATMANI (Sadece arama ve eşleşme varken görünür) */}
+          {!showModal && (
+            <>
+               {isSearching && (
+                  <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
+                      <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4 shadow-[0_0_15px_rgba(59,130,246,0.5)]"></div>
+                      <p className="text-xs font-black tracking-widest text-white uppercase bg-blue-600 px-4 py-2 rounded-full shadow-lg">Yeni biri aranıyor...</p>
+                  </div>
+              )}
+
+              <div className="md:hidden absolute right-4 bottom-24 z-[70] flex flex-col gap-4 pointer-events-auto">
+                  <button onClick={() => setShowOptions(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all">⚙️</button>
+                  <button onClick={() => setShowGenderFilter(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all">🚻</button>
+                  <button onClick={() => setShowCountryFilter(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all">🏳️</button>
+              </div>
+
+              <div className="md:hidden absolute bottom-24 left-4 right-20 z-40 flex flex-col justify-end max-h-[140px] overflow-y-auto pointer-events-none no-scrollbar">
+                  <div className="flex flex-col gap-1.5 p-2">
+                      {messages.map((m, i) => (
+                          <div key={i} className="bg-black/60 backdrop-blur-lg px-3 py-1.5 rounded-2xl text-[12px] border border-white/5 w-fit max-w-full text-white animate-in slide-in-from-left-2">
+                              <b className={m.sender === "Ben" ? "text-blue-400" : "text-pink-400"}>{m.sender}:</b> {m.text}
+                          </div>
+                      ))}
+                      <div ref={mobileChatEndRef} />
+                  </div>
+              </div>
+
+              <div className="md:hidden absolute bottom-6 right-4 z-[60] pointer-events-auto">
+                  {partnerId && (
+                      <button onClick={() => setIsMobileInputActive(!isMobileInputActive)} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all border-2 border-white/20 shadow-2xl ${isMobileInputActive ? 'bg-zinc-800 scale-90' : 'bg-blue-600 animate-bounce-subtle'}`}>
+                          <span className="text-2xl text-white leading-none">{isMobileInputActive ? '✕' : '💬'}</span>
+                      </button>
+                  )}
+              </div>
+
+              {isMobileInputActive && (
+                  <div className="md:hidden absolute bottom-6 left-4 right-20 z-[70] animate-in slide-in-from-bottom-2 duration-200">
+                      <form onSubmit={sendMessage} className="flex bg-black/80 backdrop-blur-2xl border border-white/20 p-1 rounded-full shadow-2xl">
+                          <input autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Bir şeyler yaz..." className="flex-1 bg-transparent px-4 py-2 text-sm outline-none text-white w-full" />
+                          <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center"> ➤ </button>
+                      </form>
+                  </div>
+              )}
+            </>
+          )}
         </div>
 
-        {/* DESKTOP CHAT PANELİ */}
+        {/* DESKTOP PANEL (Desktop'ta blur modal ile eş zamanlı çalışır) */}
         <div className="hidden md:flex flex-1 flex-col bg-white border-l border-zinc-200 h-full">
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {messages.map((msg, idx) => (
@@ -423,16 +445,54 @@ export default function Home() {
         </div>
       </main>
 
-      {/* GİRİŞ MODALI */}
+      {/* YENİ NESİL GİRİŞ MODALI (Glassmorphism & Blur Effect) */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-3xl z-[500] flex items-center justify-center p-6 text-center">
-            <div className="max-w-xs w-full space-y-6">
-                <h2 className="text-4xl font-black italic tracking-tighter text-blue-500 uppercase">OMEGPT</h2>
-                <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => setMyGender("male")} className={`py-5 rounded-2xl font-bold border-2 transition-all ${myGender === "male" ? "bg-blue-600 border-blue-400 scale-95" : "bg-zinc-900 border-zinc-800 opacity-60"}`}>ERKEK</button>
-                    <button onClick={() => setMyGender("female")} className={`py-5 rounded-2xl font-bold border-2 transition-all ${myGender === "female" ? "bg-pink-600 border-pink-400 scale-95" : "bg-zinc-900 border-zinc-800 opacity-60"}`}>KADIN</button>
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 text-center">
+            {/* Arka plan karartma katmanı */}
+            <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
+            
+            <div className="relative max-w-sm w-full bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] space-y-8 animate-in zoom-in-95 duration-500">
+                <div className="space-y-2">
+                  <h2 className="text-5xl font-black italic tracking-tighter text-blue-500 uppercase drop-shadow-md">OMEGPT</h2>
+                  <p className="text-[10px] font-bold text-white/60 tracking-[0.3em] uppercase">Video Chat Experience</p>
                 </div>
-                <button onClick={() => { if(!myGender) return alert("Cinsiyet seçin!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[30px] font-black text-xl uppercase shadow-2xl transition-all">BAŞLAT</button>
+
+                <div className="space-y-4">
+                  <p className="text-xs font-bold text-white uppercase tracking-wider mb-2">Cinsiyetini Seç</p>
+                  <div className="grid grid-cols-2 gap-4">
+                      <button 
+                        onClick={() => setMyGender("male")} 
+                        className={`group relative py-6 rounded-3xl font-black transition-all duration-300 border-2 overflow-hidden ${myGender === "male" ? "bg-blue-600 border-blue-400 shadow-[0_0_25px_rgba(37,99,235,0.6)] scale-95" : "bg-black/40 border-white/10 hover:border-blue-500/50"}`}
+                      >
+                          <span className="relative z-10 flex flex-col items-center gap-1">
+                            <span className="text-2xl">♂️</span>
+                            <span className="text-[10px] tracking-widest">ERKEK</span>
+                          </span>
+                      </button>
+                      <button 
+                        onClick={() => setMyGender("female")} 
+                        className={`group relative py-6 rounded-3xl font-black transition-all duration-300 border-2 overflow-hidden ${myGender === "female" ? "bg-pink-600 border-pink-400 shadow-[0_0_25px_rgba(219,39,119,0.6)] scale-95" : "bg-black/40 border-white/10 hover:border-pink-500/50"}`}
+                      >
+                          <span className="relative z-10 flex flex-col items-center gap-1">
+                            <span className="text-2xl">♀️</span>
+                            <span className="text-[10px] tracking-widest">KADIN</span>
+                          </span>
+                      </button>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => { if(!myGender) return alert("Devam etmek için bir cinsiyet seçmelisiniz!"); setShowModal(false); handleNext(); }} 
+                  className="group w-full bg-white text-black py-5 rounded-[25px] font-black text-lg uppercase shadow-2xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 overflow-hidden relative"
+                >
+                  <span className="relative z-10">Sohbete Başla</span>
+                  <span className="text-xl relative z-10">🚀</span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                </button>
+                
+                <p className="text-[9px] text-white/40 leading-relaxed px-4">
+                  "Sohbete Başla" butonuna basarak Hizmet Şartlarımızı ve Topluluk Kurallarımızı kabul etmiş sayılırsınız.
+                </p>
             </div>
         </div>
       )}
@@ -441,11 +501,15 @@ export default function Home() {
         html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden !important; position: fixed; background: black; overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .animate-in { animation-duration: 0.3s; animation-fill-mode: both; }
-        @keyframes slideInBottom2 { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .animate-in { animation-duration: 0.4s; animation-fill-mode: both; }
+        @keyframes slideInBottom2 { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .slide-in-from-bottom-2 { animation-name: slideInBottom2; }
         @keyframes zoom-in-95 { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
         .zoom-in-95 { animation-name: zoom-in-95; }
+        @keyframes slideInLeft { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .slide-in-from-left-2 { animation-name: slideInLeft; }
+        @keyframes bounce-subtle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        .animate-bounce-subtle { animation: bounce-subtle 2s infinite ease-in-out; }
       `}</style>
     </div>
   );
