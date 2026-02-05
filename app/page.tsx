@@ -46,6 +46,7 @@ export default function Home() {
   const [matchNotification, setMatchNotification] = useState<string | null>(null);
   const [showSwipeHint, setShowSwipeHint] = useState(false);
 
+  // Ülke Emoji Yardımcı Fonksiyonu
   const getFlagEmoji = (countryCode: string) => {
     if (countryCode === "all" || countryCode === "UN") return "🌐";
     return countryCode.toUpperCase().replace(/./g, (char) => String.fromCodePoint(char.charCodeAt(0) + 127397));
@@ -67,10 +68,13 @@ export default function Home() {
     const setHeight = () => document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
     setHeight();
     window.addEventListener('resize', setHeight);
-    if (window.innerWidth < 768) {
+    
+    // Swipe Hint Sadece Mobilde (768px altı) görünecek
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
         const hasSwiped = localStorage.getItem("hasSwipedBefore");
         if (!hasSwiped) setShowSwipeHint(true);
     }
+
     return () => window.removeEventListener('resize', setHeight);
   }, []);
 
@@ -85,7 +89,7 @@ export default function Home() {
       const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode }, audio: true });
       streamRef.current = newStream;
       if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
-    } catch (err) { console.error("Kamera hatası:", err); }
+    } catch (err) { console.error("Media error:", err); }
   };
 
   useEffect(() => {
@@ -100,8 +104,10 @@ export default function Home() {
       setIsSearching(false); 
       initiatePeer(data.partnerId, data.initiator);
 
-      const countryName = allCountries.find(c => c.id === data.country)?.name || (data.country === "UN" ? "Global" : data.country);
-      setMatchNotification(`Matched with someone from ${countryName}`);
+      // Ülke Bildirimi İngilizce
+      const countryObj = allCountries.find(c => c.id === data.country);
+      const countryName = countryObj ? countryObj.name : "Global";
+      setMatchNotification(`You matched with someone from ${countryName}`);
       setTimeout(() => setMatchNotification(null), 4000);
     });
 
@@ -146,7 +152,7 @@ export default function Home() {
           setSearchGender("all");
           setSelectedCountry("all");
           socket.emit("find_partner", { myGender, searchGender: "all", selectedCountry: "all" });
-          setSearchStatus("Global searching...");
+          setSearchStatus("Searching...");
         }, 2000);
       }, 7000);
     } else {
@@ -176,6 +182,24 @@ export default function Home() {
     }
   };
 
+  // Kamera Switch Toggle
+  const toggleCamera = () => {
+    if (streamRef.current) {
+      const track = streamRef.current.getVideoTracks()[0];
+      track.enabled = !cameraOn;
+      setCameraOn(!cameraOn);
+    }
+  };
+
+  // Mikrofon Switch Toggle
+  const toggleMic = () => {
+    if (streamRef.current) {
+      const track = streamRef.current.getAudioTracks()[0];
+      track.enabled = !micOn;
+      setMicOn(!micOn);
+    }
+  };
+
   if (!isMounted) return null;
 
   return (
@@ -184,12 +208,17 @@ export default function Home() {
       style={{ height: 'var(--vv-height, 100vh)' }}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
-      {/* SWIPE HINT */}
+      {/* SWIPE HINT (Sadece Mobil) */}
       {showSwipeHint && !showModal && partnerId && (
-        <div className="fixed inset-y-0 right-0 z-[100] pointer-events-none flex items-center pr-10">
-          <div className="flex flex-col items-center animate-swipe-left text-blue-500">
+        <div className="hidden md:flex fixed inset-y-0 right-0 z-[100] pointer-events-none items-center pr-10">
+          {/* Web'de boş döner, CSS md:hidden ile zaten mobilde kalır ama işi garantiye aldık */}
+        </div>
+      )}
+      {showSwipeHint && !showModal && partnerId && (
+        <div className="md:hidden fixed inset-y-0 right-0 z-[100] pointer-events-none flex items-center pr-10">
+           <div className="flex flex-col items-center animate-swipe-left text-blue-500">
             <span className="text-5xl">⬅️</span>
-            <p className="text-[10px] font-bold bg-blue-600 text-white px-2 py-1 rounded mt-2">Swipe to next</p>
+            <p className="text-[10px] font-bold bg-blue-600 text-white px-2 py-1 rounded mt-2 uppercase">Swipe to Next</p>
           </div>
         </div>
       )}
@@ -197,7 +226,7 @@ export default function Home() {
       {/* MODALS */}
       {showCountryFilter && (
         <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white text-black w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95">
+          <div className="bg-white text-black w-full max-w-sm rounded-2xl shadow-2xl animate-in zoom-in-95">
             <div className="p-4 border-b flex items-center justify-between">
               <h3 className="text-blue-500 font-bold">Country Filter</h3>
               <button onClick={() => setShowCountryFilter(false)} className="text-zinc-400 text-2xl">✕</button>
@@ -208,7 +237,7 @@ export default function Home() {
                 {filteredCountries.map((c) => (
                   <button key={c.id} onClick={() => { setSelectedCountry(c.id); setShowCountryFilter(false); handleNext(); }} className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl transition-all">
                     <div className="flex items-center gap-3"><span>{c.flag}</span><span className={`text-sm font-medium ${selectedCountry === c.id ? 'text-blue-500' : 'text-zinc-700'}`}>{c.name}</span></div>
-                    {selectedCountry === c.id && <span className="text-blue-500">✓</span>}
+                    {selectedCountry === c.id && <span className="text-blue-500 font-bold">✓</span>}
                   </button>
                 ))}
               </div>
@@ -219,7 +248,7 @@ export default function Home() {
 
       {showGenderFilter && (
           <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
-              <div className="bg-white text-black w-full max-w-xs rounded-lg overflow-hidden shadow-2xl animate-in zoom-in-95">
+              <div className="bg-white text-black w-full max-w-xs rounded-lg shadow-2xl animate-in zoom-in-95">
                   <div className="flex items-center justify-between p-4 border-b text-blue-500 font-bold">Gender Filter <button onClick={() => setShowGenderFilter(false)} className="text-zinc-400 text-2xl">✕</button></div>
                   <div className="p-2">
                       {[{ id: 'all', label: 'Everyone', icon: '👤', color: 'text-blue-500' }, { id: 'female', label: 'Females Only', icon: '♀️', color: 'text-pink-500' }, { id: 'male', label: 'Males Only', icon: '♂️', color: 'text-blue-400' }].map((opt) => (
@@ -233,35 +262,50 @@ export default function Home() {
           </div>
       )}
 
+      {showOptions && (
+          <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+              <div className="bg-white text-black w-full max-w-xs rounded-lg shadow-2xl animate-in zoom-in-95">
+                  <div className="flex items-center justify-between p-4 border-b text-blue-500 font-bold">Options <button onClick={() => setShowOptions(false)} className="text-zinc-400 text-2xl">✕</button></div>
+                  <div className="p-2 space-y-1">
+                      <button onClick={() => { startMedia(facingMode === "user" ? "environment" : "user"); setFacingMode(facingMode === "user" ? "environment" : "user"); }} className="w-full flex items-center gap-4 p-3 hover:bg-zinc-100 rounded-lg">
+                          <span className="text-xl">🔄</span> <span className="text-sm font-medium">Switch Camera</span>
+                      </button>
+                      <div className="flex items-center justify-between p-3">
+                          <div className="flex items-center gap-4"><span className="text-xl">📹</span> <span className="text-sm font-medium">Camera</span></div>
+                          <input type="checkbox" checked={cameraOn} onChange={toggleCamera} className="w-10 h-5 bg-zinc-200 rounded-full appearance-none checked:bg-green-500 relative transition-all before:content-[''] before:absolute before:w-4 before:h-4 before:bg-white before:rounded-full before:top-0.5 before:left-0.5 checked:before:left-5 before:transition-all cursor-pointer" />
+                      </div>
+                      <div className="flex items-center justify-between p-3">
+                          <div className="flex items-center gap-4"><span className="text-xl">🎤</span> <span className="text-sm font-medium">Mic</span></div>
+                          <input type="checkbox" checked={micOn} onChange={toggleMic} className="w-10 h-5 bg-zinc-200 rounded-full appearance-none checked:bg-green-500 relative transition-all before:content-[''] before:absolute before:w-4 before:h-4 before:bg-white before:rounded-full before:top-0.5 before:left-0.5 checked:before:left-5 before:transition-all cursor-pointer" />
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* MAIN LAYOUT */}
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative w-full h-full">
-        {/* VIDEO AREA (SOL TARAF - WEB / TAM EKRAN - MOBİL) */}
+        {/* VIDEO AREA */}
         <div className="flex-1 relative md:max-w-[50%] lg:max-w-[60%] h-full bg-black md:border-r border-zinc-800 z-10">
-          
-          {/* ÜST VİDEO (Yabancı) */}
           <div className={`absolute top-0 left-0 w-full h-[50%] md:h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5 transition-all duration-700 ${showModal ? 'blur-2xl' : ''}`}>
              <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-             
              {isSearching && (
                 <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-md">
                     <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4 shadow-[0_0_15px_rgba(59,130,246,0.3)]"></div>
                     <p className="text-[10px] font-black tracking-widest text-white uppercase bg-blue-600 px-4 py-1.5 rounded-full">{searchStatus}</p>
                 </div>
              )}
-
              {matchNotification && (
                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[60] animate-in zoom-in-95 fade-in duration-500">
                   <div className="bg-blue-600/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-2xl border border-white/20 whitespace-nowrap font-bold text-sm">✨ {matchNotification}</div>
                </div>
              )}
-
              <div className="absolute top-4 left-4 z-50">
                   <h1 className="text-xl font-black italic text-blue-500 bg-black/30 px-2 py-1 rounded">OMEGPT</h1>
                   {partnerCountry && !isSearching && <div className="mt-1 text-[10px] font-bold bg-black/60 px-2 py-1 rounded-full border border-white/10 w-fit">🌍 {partnerCountry}</div>}
               </div>
           </div>
 
-          {/* ALT VİDEO (Kullanıcı) */}
           <div className={`absolute bottom-0 left-0 w-full h-[50%] md:h-[50%] overflow-hidden bg-zinc-900 transition-all duration-700 ${showModal ? 'blur-2xl' : ''}`}>
              <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
              {!showModal && (
@@ -281,7 +325,6 @@ export default function Home() {
                 ))}
                 <div ref={mobileChatEndRef} />
              </div>
-
              <div className="md:hidden absolute bottom-6 right-4 z-[90]">
                 {partnerId && (
                     <button onClick={() => setIsMobileInputActive(!isMobileInputActive)} className={`w-14 h-14 rounded-full flex items-center justify-center border-2 border-white/20 shadow-2xl ${isMobileInputActive ? 'bg-zinc-800' : 'bg-blue-600 animate-bounce-subtle'}`}>
@@ -289,10 +332,9 @@ export default function Home() {
                     </button>
                 )}
              </div>
-
              {isMobileInputActive && (
                 <div className="md:hidden absolute bottom-6 left-4 right-20 z-[95]">
-                    <form onSubmit={sendMessage} className="flex bg-black/80 backdrop-blur-2xl border border-white/20 p-1 rounded-full">
+                    <form onSubmit={sendMessage} className="flex bg-black/80 backdrop-blur-2xl border border-white/20 p-1 rounded-full shadow-2xl">
                         <input autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Type a message..." className="flex-1 bg-transparent px-4 py-2 text-sm outline-none text-white w-full" />
                         <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-full"> ➤ </button>
                     </form>
@@ -301,12 +343,9 @@ export default function Home() {
           </div>
         </div>
 
-        {/* CHAT AREA (SAĞ TARAF - SADECE WEB) */}
+        {/* CHAT AREA (WEB) */}
         <div className="hidden md:flex flex-1 flex-col bg-white border-l border-zinc-200 h-full relative z-20">
-          <div className="p-4 border-b bg-zinc-50 flex items-center justify-between">
-            <span className="font-bold text-zinc-800">Sohbet</span>
-            <span className="text-xs text-zinc-400">Partner: {partnerCountry || "Global"}</span>
-          </div>
+          <div className="p-4 border-b bg-zinc-50 flex items-center justify-between font-bold text-zinc-800">Sohbet Alanı</div>
           <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex flex-col ${msg.sender === "Me" ? "items-end" : "items-start"}`}>
@@ -318,10 +357,10 @@ export default function Home() {
             <div ref={chatEndRef} />
           </div>
           <div className="p-4 bg-zinc-50 border-t flex items-center gap-3">
-            <button onClick={() => handleNext()} className="bg-black text-white px-6 py-3 rounded-xl font-bold uppercase text-xs hover:bg-zinc-800 transition-colors">Sıradaki</button>
+            <button onClick={() => handleNext()} className="bg-black text-white px-6 py-3 rounded-xl font-bold uppercase text-xs hover:bg-zinc-800">Sıradaki</button>
             <form onSubmit={sendMessage} className="flex-1 flex gap-2">
                 <input value={inputText} onChange={(e) => setInputText(e.target.value)} className="flex-1 border border-zinc-300 p-3 rounded-xl text-black outline-none focus:ring-2 ring-blue-500/20" placeholder="Mesaj yaz..." />
-                <button type="submit" className="bg-blue-600 text-white px-5 rounded-xl font-bold hover:bg-blue-700 transition-colors">➤</button>
+                <button type="submit" className="bg-blue-600 text-white px-5 rounded-xl font-bold">➤</button>
             </form>
           </div>
         </div>
@@ -339,7 +378,7 @@ export default function Home() {
                     <button onClick={() => setMyGender("female")} className={`py-6 rounded-3xl font-black border-2 transition-all ${myGender === "female" ? "bg-pink-600 border-pink-400 shadow-lg scale-95" : "bg-black/40 border-white/10"}`}>FEMALE</button>
                   </div>
                 </div>
-                <button onClick={() => { if(!myGender) return alert("Select gender!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[25px] font-black text-lg">START 🚀</button>
+                <button onClick={() => { if(!myGender) return alert("Select gender!"); setShowModal(false); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[25px] font-black text-lg shadow-2xl transition-transform active:scale-95">START 🚀</button>
             </div>
         </div>
       )}
@@ -347,14 +386,10 @@ export default function Home() {
       <style jsx global>{`
         html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden !important; position: fixed; background: black; overscroll-behavior: none; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes swipe-left { 0%, 100% { transform: translateX(0); opacity: 0.8; } 50% { transform: translateX(-20px); opacity: 1; } }
         .animate-swipe-left { animation: swipe-left 1.5s infinite ease-in-out; }
         @keyframes bounce-subtle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
         .animate-bounce-subtle { animation: bounce-subtle 2s infinite ease-in-out; }
-        .animate-in { animation-duration: 0.3s; animation-fill-mode: both; }
-        @keyframes zoom-in-95 { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-        .zoom-in-95 { animation-name: zoom-in-95; }
       `}</style>
     </div>
   );
