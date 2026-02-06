@@ -33,7 +33,6 @@ export default function Home() {
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   const [myGender, setMyGender] = useState<string | null>(null);
   
-  // FİLTRE STATE'LERİ (Tik işaretleri için bu state'ler kullanılır)
   const [searchGender, setSearchGender] = useState("all"); 
   const [selectedCountry, setSelectedCountry] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -100,12 +99,16 @@ export default function Home() {
       setSearchStatus("Searching...");
       setMessages([]); 
       setPartnerId(data.partnerId); 
-      setPartnerCountry(data.country);
+      
+      // ÜLKE İSMİ ÇÖZÜMLEME GÜNCELLEMESİ
+      const countryCode = data.country || "UN";
+      const countryObj = allCountries.find(c => c.id === countryCode.toUpperCase());
+      const countryName = countryObj ? countryObj.name : "Global";
+      
+      setPartnerCountry(countryName);
       setIsSearching(false); 
       initiatePeer(data.partnerId, data.initiator);
 
-      const countryObj = allCountries.find(c => c.id === data.country);
-      const countryName = countryObj ? countryObj.name : "Global";
       setMatchNotification(`You matched with someone from ${countryName}`);
       setTimeout(() => setMatchNotification(null), 4000);
     });
@@ -144,20 +147,19 @@ export default function Home() {
     setMatchNotification(null);
     setIsMobileInputActive(false);
     
-    // AKILLI KADEMELİ ARAMA MANTIĞI
+    // AKILLI KADEMELİ ARAMA MANTIĞI GÜNCELLEMESİ
     if (targetGender !== "all" || targetCountry !== "all") {
       setSearchStatus("Searching by preference...");
       
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
       
       searchTimerRef.current = setTimeout(() => {
-        setSearchStatus("No matches, looking for people in your area...");
+        setSearchStatus("No matches, broadening search...");
         
         setTimeout(() => {
-          // 15 saniye sonra hala kimse yoksa filtreleri esnet
+          // 15 saniye sonra hala kimse yoksa filtreleri esnetip global arama yap
           socket.emit("find_partner", { myGender, searchGender: "all", selectedCountry: "all" });
-          setSearchStatus("Broadening search to global...");
-        }, 3000);
+        }, 2000);
       }, 15000);
     } else {
       setSearchStatus("Searching...");
@@ -210,7 +212,7 @@ export default function Home() {
       style={{ height: 'var(--vv-height, 100vh)' }}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
-      {/* SWIPE HINT (Sadece Mobil ve İlk Giriş) */}
+      {/* SWIPE HINT */}
       {showSwipeHint && !showModal && !isSearching && partnerId && (
         <div className="md:hidden fixed inset-y-0 right-0 z-[100] pointer-events-none flex items-center pr-10">
            <div className="flex flex-col items-center animate-swipe-left text-blue-500">
@@ -231,16 +233,8 @@ export default function Home() {
             <div className="p-4">
               <input type="text" placeholder="Search country..." className="w-full bg-zinc-100 rounded-full py-2 px-4 mb-4 outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
               <div className="max-h-[350px] overflow-y-auto no-scrollbar space-y-1">
-                {filteredCountries.map((c) => (
-                  <button 
-                    key={c.id} 
-                    onClick={() => { 
-                        setSelectedCountry(c.id); 
-                        setShowCountryFilter(false); 
-                        handleNext(undefined, c.id); 
-                    }} 
-                    className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl transition-all"
-                  >
+                {allCountries.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map((c) => (
+                  <button key={c.id} onClick={() => { setSelectedCountry(c.id); setShowCountryFilter(false); handleNext(undefined, c.id); }} className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl transition-all">
                     <div className="flex items-center gap-3"><span>{c.flag}</span><span className={`text-sm font-medium ${selectedCountry === c.id ? 'text-blue-500' : 'text-zinc-700'}`}>{c.name}</span></div>
                     {selectedCountry === c.id && <span className="text-blue-500 font-bold">✓</span>}
                   </button>
@@ -257,19 +251,8 @@ export default function Home() {
                   <div className="flex items-center justify-between p-4 border-b text-blue-500 font-bold">Gender Filter <button onClick={() => setShowGenderFilter(false)} className="text-zinc-400 text-2xl">✕</button></div>
                   <div className="p-2">
                       {[{ id: 'all', label: 'Everyone', icon: '👤', color: 'text-blue-500' }, { id: 'female', label: 'Females Only', icon: '♀️', color: 'text-pink-500' }, { id: 'male', label: 'Males Only', icon: '♂️', color: 'text-blue-400' }].map((opt) => (
-                          <button 
-                            key={opt.id} 
-                            onClick={() => { 
-                                setSearchGender(opt.id); 
-                                setShowGenderFilter(false); 
-                                handleNext(opt.id); 
-                            }} 
-                            className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl"
-                          >
-                              <div className="flex items-center gap-4">
-                                  <span className={`text-xl ${opt.color}`}>{opt.icon}</span>
-                                  <span className={`text-sm font-medium ${searchGender === opt.id ? 'text-blue-500' : 'text-zinc-600'}`}>{opt.label}</span>
-                              </div>
+                          <button key={opt.id} onClick={() => { setSearchGender(opt.id); setShowGenderFilter(false); handleNext(opt.id); }} className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl">
+                              <div className="flex items-center gap-4"><span className={`text-xl ${opt.color}`}>{opt.icon}</span><span className="text-sm font-medium">{opt.label}</span></div>
                               {searchGender === opt.id && <span className="text-blue-500 font-bold">✓</span>}
                           </button>
                       ))}
@@ -301,7 +284,6 @@ export default function Home() {
 
       {/* MAIN LAYOUT */}
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative w-full h-full">
-        {/* VIDEO AREA */}
         <div className="flex-1 relative md:max-w-[50%] lg:max-w-[60%] h-full bg-black md:border-r border-zinc-800 z-10">
           <div className={`absolute top-0 left-0 w-full h-[50%] md:h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5 transition-all duration-700 ${showModal ? 'blur-2xl' : ''}`}>
              <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
@@ -331,8 +313,6 @@ export default function Home() {
                   <button onClick={() => setShowCountryFilter(true)} className="w-12 h-12 bg-black/50 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all">🏳️</button>
                </div>
              )}
-
-             {/* MOBİL MESAJLAŞMA */}
              <div className="md:hidden absolute bottom-24 left-4 right-20 z-40 flex flex-col justify-end max-h-[140px] overflow-y-auto no-scrollbar pointer-events-none">
                 {messages.map((m, i) => (
                     <div key={i} className="bg-black/60 backdrop-blur-lg px-3 py-1.5 rounded-2xl text-[12px] border border-white/5 w-fit max-w-full text-white mb-1">
@@ -359,7 +339,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* CHAT AREA (WEB) */}
         <div className="hidden md:flex flex-1 flex-col bg-white border-l border-zinc-200 h-full relative z-20">
           <div className="p-4 border-b bg-zinc-50 flex items-center justify-between font-bold text-zinc-800">Sohbet Alanı</div>
           <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
@@ -382,7 +361,6 @@ export default function Home() {
         </div>
       </main>
 
-      {/* LOGIN MODAL */}
       {showModal && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm text-center">
             <div className="relative max-w-sm w-full bg-zinc-900 border border-white/20 p-8 rounded-[40px] shadow-2xl space-y-8 animate-in zoom-in-95 duration-500">
