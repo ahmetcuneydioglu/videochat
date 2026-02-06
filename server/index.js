@@ -32,6 +32,33 @@ const Ban = mongoose.model('Ban', new mongoose.Schema({ ip: String, reason: Stri
 const Report = mongoose.model('Report', new mongoose.Schema({ reporterId: String, reportedId: String, reportedIP: String, screenshot: String, date: { type: Date, default: Date.now } }));
 const Log = mongoose.model('Log', new mongoose.Schema({ userId: String, userIP: String, action: String, targetId: String, duration: Number, date: { type: Date, default: Date.now } }));
 
+const UserSchema = new mongoose.Schema({
+  googleId: { type: String, unique: true, sparse: true }, // Google'dan gelen eşsiz ID
+  email: { type: String, unique: true, sparse: true },
+  name: String,
+  avatar: String,
+  likes: { type: Number, default: 0 }, // Toplam kalp puanı
+  isRegistered: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const User = mongoose.model('User', UserSchema);
+
+// Sosyal Login için API Rotası
+app.post('/api/auth/social-login', async (req, res) => {
+  const { googleId, email, name, avatar } = req.body;
+  try {
+    let user = await User.findOne({ googleId });
+    if (!user) {
+      user = new User({ googleId, email, name, avatar, isRegistered: true });
+      await user.save();
+    }
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: "Giriş yapılamadı" });
+  }
+});
+
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"], credentials: true } });
 
 let globalQueue = [];
@@ -47,8 +74,19 @@ io.on('connection', async (socket) => {
   const geo = geoip.lookup(userIP);
   const countryCode = geo ? geo.country : 'UN';
 
+    const dbUserId = socket.handshake.query.dbUserId; 
+        let initialLikes = 0;
+
+        if (dbUserId && mongoose.Types.ObjectId.isValid(dbUserId)) {
+        const dbUser = await User.findById(dbUserId);
+        if (dbUser) initialLikes = dbUser.likes;
+        }
+
   userDetails.set(socket.id, {
     id: socket.id,
+    dbId: dbUserId || null, // Veritabanı ID'si
+    likes: initialLikes,    // Veritabanından gelen güncel beğeni
+    isRegistered: !!dbUserId,
     ip: userIP,
     country: countryCode,
     joinedAt: new Date(),
@@ -61,6 +99,30 @@ io.on('connection', async (socket) => {
 
   const isBanned = await Ban.findOne({ ip: userIP });
   if (isBanned) return socket.disconnect();
+
+    socket.on('like_partner', async ({ targetId }) => {
+    const me = userDetails.get(socket.id);
+    const partner = userDetails.get(targetId);
+
+    // Sadece kayıtlı (login olmuş) kişiler like atabilir kuralını buraya koyabiliriz
+    if (!me || !me.isRegistered) {
+        return socket.emit('error_msg', "Beğeni atmak için giriş yapmalısın!");
+    }
+
+    if (partner && partner.dbId) {
+        // Veritabanında partnerin puanını artır
+        await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
+        
+        // Partnerin o anki oturumdaki puanını da güncelle
+        partner.likes += 1;
+
+        // Karşı tarafa "Seni beğendiler!" sinyali gönder (Görsel efekt için)
+        io.to(targetId).emit('receive_like', { newLikes: partner.likes });
+        
+        // Log tut
+        new Log({ userId: socket.id, action: 'LIKED', targetId }).save();
+    }
+    });
 
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
     // 1. Önceki kuyruk kayıtlarını temizle
