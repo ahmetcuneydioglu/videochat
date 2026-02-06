@@ -20,6 +20,7 @@ app.use((req, res, next) => {
 
 const server = http.createServer(app);
 
+// MongoDB bağlantısı (Senin URL'in kalsın)
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ahmetcnd:Ahmet263271@videochat.vok6vud.mongodb.net/?appName=videochat';
 
 mongoose.connect(MONGODB_URI)
@@ -55,27 +56,35 @@ io.on('connection', async (socket) => {
     reports: 0,
     status: 'IDLE',
     currentPartner: null,
-    myGender: 'male' // Varsayılan
+    myGender: 'male' 
   });
 
   const isBanned = await Ban.findOne({ ip: userIP });
   if (isBanned) return socket.disconnect();
 
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
+    // 1. Önceki kuyruk kayıtlarını temizle
     globalQueue = globalQueue.filter(item => item.id !== socket.id);
 
     const u = userDetails.get(socket.id);
     if (u) {
         u.skips += 1;
         u.status = 'SEARCHING';
-        u.myGender = myGender; // Cinsiyeti güncelle
+        u.myGender = myGender; 
     }
 
     const tryMatch = () => {
       const partnerIndex = globalQueue.findIndex(p => {
+        // CİNSİYET EŞLEŞME MANTIĞI: 
+        // 1. Karşı taraf benim aradığım cinsiyet mi? (VEYA herkes olur mu?)
+        // 2. Ben karşı tarafın aradığı cinsiyet miyim? (VEYA karşı taraf için herkes olur mu?)
         const genderMatch = (searchGender === 'all' || searchGender === p.myGender) && 
-                            (p.searchGender === 'all' || p.myGender === myGender);
+                            (p.searchGender === 'all' || p.searchGender === myGender);
+        
+        // ÜLKE EŞLEŞME MANTIĞI:
+        // Eğer ben belirli bir ülke seçtiysem o olmalı.
         const countryMatch = (selectedCountry === 'all' || selectedCountry === p.countryCode);
+        
         return genderMatch && countryMatch && p.id !== socket.id;
       });
 
@@ -88,10 +97,10 @@ io.on('connection', async (socket) => {
         
         const u1 = userDetails.get(socket.id);
         const u2 = userDetails.get(partner.id);
-        if (u1) u1.status = 'BUSY';
-        if (u2) u2.status = 'BUSY';
+        if (u1) { u1.status = 'BUSY'; u1.currentPartner = partner.id; }
+        if (u2) { u2.status = 'BUSY'; u2.currentPartner = socket.id; }
 
-        // Karşılıklı veri gönderimi
+        // Frontend'e birbirlerinin bilgilerini gönder
         io.to(socket.id).emit('partner_found', { 
             partnerId: partner.id, 
             initiator: true, 
@@ -110,16 +119,30 @@ io.on('connection', async (socket) => {
     };
 
     if (!tryMatch()) {
-      globalQueue.push({ id: socket.id, myGender, searchGender, countryCode, selectedCountry });
+      // Kuyruğa eklerken tüm filtreleri kaydediyoruz
+      globalQueue.push({ 
+          id: socket.id, 
+          myGender, 
+          searchGender, 
+          countryCode, 
+          selectedCountry 
+      });
     }
   });
 
   socket.on('stop_search', () => {
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
     const u = userDetails.get(socket.id);
-    if (u) u.status = 'IDLE';
+    if (u) {
+        u.status = 'IDLE';
+        u.currentPartner = null;
+    }
     const partnerId = activeMatches.get(socket.id);
-    if (partnerId) io.to(partnerId).emit('partner_disconnected');
+    if (partnerId) {
+        io.to(partnerId).emit('partner_disconnected');
+        activeMatches.delete(socket.id);
+        activeMatches.delete(partnerId);
+    }
   });
 
   socket.on('signal', (data) => {
@@ -127,8 +150,14 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('disconnect', () => {
+    const partnerId = activeMatches.get(socket.id);
+    if (partnerId) {
+      io.to(partnerId).emit('partner_disconnected');
+      activeMatches.delete(partnerId);
+    }
     userDetails.delete(socket.id);
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
+    activeMatches.delete(socket.id);
   });
 });
 
