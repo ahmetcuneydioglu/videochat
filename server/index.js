@@ -39,10 +39,10 @@ const matchTimes = new Map();
 const userDetails = new Map();
 
 io.on('connection', async (socket) => {
-  // IP YAKALAMA VE ÜLKE TESPİTİ
+  // IP YAKALAMA VE RENDER PROXY DÜZELTMESİ
   let userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
-  if (userIP.includes(',')) userIP = userIP.split(',')[0]; // Render proxy düzeltmesi
-  if (userIP === '::1' || userIP === '127.0.0.1') userIP = '176.234.224.0'; // Lokal test için TR IP
+  if (userIP.includes(',')) userIP = userIP.split(',')[0].trim();
+  if (userIP === '::1' || userIP === '127.0.0.1') userIP = '176.234.224.0';
   
   const geo = geoip.lookup(userIP);
   const countryCode = geo ? geo.country : 'UN';
@@ -62,7 +62,7 @@ io.on('connection', async (socket) => {
   if (isBanned) return socket.disconnect();
 
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
-    // Önce kuyruğu temizle (Duplicate önleme)
+    // 1. Önceki kuyruğu temizle
     globalQueue = globalQueue.filter(item => item.id !== socket.id);
 
     const u = userDetails.get(socket.id);
@@ -71,7 +71,6 @@ io.on('connection', async (socket) => {
         u.status = 'SEARCHING';
     }
 
-    // Skip loglaması
     if (activeMatches.has(socket.id)) {
         const duration = Math.floor((Date.now() - (matchTimes.get(socket.id) || Date.now())) / 1000);
         new Log({ userId: socket.id, userIP, action: 'SKIPPED', duration }).save();
@@ -103,7 +102,7 @@ io.on('connection', async (socket) => {
         if (u1) { u1.status = 'BUSY'; u1.currentPartner = partner.id; }
         if (u2) { u2.status = 'BUSY'; u2.currentPartner = socket.id; }
 
-        // KRİTİK DÜZELTME: Ülke bilgisini direkt geoip'ten gelen taze veriyle gönderiyoruz
+        // KRİTİK: country bilgisini taze GeoIP verisinden gönderiyoruz
         io.to(socket.id).emit('partner_found', { partnerId: partner.id, initiator: true, country: partner.countryCode });
         io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false, country: countryCode });
         return true;
@@ -116,7 +115,7 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // START/STOP İÇİN DURDURMA OLAYI
+  // START/STOP İÇİN YENİ: Kuyruktan çıkarma ve eşleşmeyi bitirme
   socket.on('stop_search', () => {
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
     const u = userDetails.get(socket.id);
@@ -160,7 +159,7 @@ io.on('connection', async (socket) => {
   });
 });
 
-// ADMIN ROTALARI (Dokunulmadı, hepsi aktif)
+// ADMIN API ROTALARI
 app.get('/api/admin/active-users', (req, res) => res.json(Array.from(userDetails.values())));
 app.get('/api/admin/stats', async (req, res) => {
     res.json({ activeUsers: userDetails.size, totalBans: await Ban.countDocuments(), pendingReports: await Report.countDocuments() });
