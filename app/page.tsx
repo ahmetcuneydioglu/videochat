@@ -24,6 +24,7 @@ export default function Home() {
   const peerRef = useRef<Peer.Instance | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [partnerGender, setPartnerGender] = useState<string | null>(null);
 
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
@@ -101,24 +102,30 @@ export default function Home() {
     if (isMounted) startMedia();
 
     socket.on("partner_found", (data) => {
-      if (!isActive) return;
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-      setSearchStatus("Searching...");
-      setMessages([]); 
-      setPartnerId(data.partnerId); 
-      const countryCode = (data.country || "UN").toUpperCase();
-      const countryObj = allCountries.find(c => c.id === countryCode);
-      const countryName = countryObj ? countryObj.name : "Global";
-      
-      setPartnerCountry(countryName);
-      setPartnerFlag(countryObj ? countryObj.flag : "🌐"); // Bayrağı ata
-      
-      setIsSearching(false); 
-      initiatePeer(data.partnerId, data.initiator);
+        if (!isActive) return;
+        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+        
+        setSearchStatus("Searching...");
+        setMessages([]); 
+        
+        // Eşleşme bilgilerini kaydediyoruz
+        setPartnerId(data.partnerId); 
+        setPartnerGender(data.partnerGender); // Backend'den gelen cinsiyeti (male/female) buraya alıyoruz
+        
+        const countryCode = (data.country || "UN").toUpperCase();
+        const countryObj = allCountries.find(c => c.id === countryCode);
+        const countryName = countryObj ? countryObj.name : "Global";
+        
+        setPartnerCountry(countryName);
+        setPartnerFlag(countryObj ? countryObj.flag : "🌐"); // Bayrağı ata
+        
+        setIsSearching(false); 
+        initiatePeer(data.partnerId, data.initiator);
 
-      setMatchNotification(`Matched with ${countryName}`);
-      setTimeout(() => setMatchNotification(null), 4000);
-    });
+        // Bildirim mesajı
+        setMatchNotification(`Matched with ${countryName}`);
+        setTimeout(() => setMatchNotification(null), 4000);
+      });
 
     socket.on("partner_disconnected", () => {
       cleanUpPeer();
@@ -133,13 +140,14 @@ export default function Home() {
   }, [isMounted, allCountries, isActive]);
 
   const cleanUpPeer = () => {
-    if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    setPartnerId(null);
-    setPartnerCountry(null);
-    setPartnerFlag(null);
-    setMatchNotification(null);
-  };
+  if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
+  if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+  setPartnerId(null);
+  setPartnerCountry(null);
+  setPartnerFlag(null);
+  setPartnerGender(null); // Bunu ekle
+  setMatchNotification(null);
+};
 
   function initiatePeer(targetId: string, initiator: boolean) {
     if (!streamRef.current) return;
@@ -265,42 +273,47 @@ export default function Home() {
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
             
             {/* GÖRSEL 2: VİDEO ÜZERİ KULLANICI BİLGİ ETİKETİ */}
-            {/* ÜST VİDEO ÜZERİNDEKİ YENİ ESTETİK BİLGİ ETİKETİ */}
-          {!isSearching && isActive && partnerId && (
-            <div className="absolute top-6 left-6 z-[60] animate-in fade-in slide-in-from-left-6 duration-700">
-              <div className="flex items-center gap-3 bg-white/10 backdrop-blur-2xl border border-white/20 pl-2 pr-4 py-1.5 rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-all hover:bg-white/15">
-                
-                {/* BAYRAK ALANI */}
-                <div className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full text-2xl shadow-inner">
-                    {partnerFlag}
-                </div>
+          {/* ÜST VİDEO ÜZERİNDEKİ PROFESYONEL BİLGİ ETİKETİ */}
+{!isSearching && isActive && partnerId && (
+  <div className="absolute top-6 left-6 z-[60] animate-in fade-in slide-in-from-left-8 duration-700 ease-out">
+    <div className="flex items-center gap-3 bg-black/40 backdrop-blur-2xl border border-white/10 pl-1.5 pr-4 py-1.5 rounded-full shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+       
+       {/* BAYRAK ALANI */}
+       <div className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full text-2xl shadow-inner border border-white/5">
+          {partnerFlag}
+       </div>
 
-                {/* ÜLKE VE CİNSİYET BİLGİSİ */}
-                <div className="flex flex-col">
-                    <span className="text-[11px] font-black text-white/90 tracking-tight leading-none">
-                      {partnerCountry}
-                    </span>
-                    <span className="text-[9px] font-bold text-blue-400/80 uppercase tracking-[0.1em] mt-0.5">
-                      Verified Partner
-                    </span>
-                </div>
+       {/* ÜLKE BİLGİSİ */}
+       <div className="flex flex-col">
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+            <span className="text-[11px] font-black text-white tracking-tight uppercase leading-none">
+              {partnerCountry}
+            </span>
+          </div>
+          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.15em] mt-1">
+            Live Connection
+          </span>
+       </div>
 
-                {/* AYRIŞTIRICI ÇİZGİ */}
-                <div className="h-6 w-[1px] bg-white/10 ml-1"></div>
+       {/* AYRIŞTIRICI ÇİZGİ */}
+       <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
 
-                {/* DİNAMİK CİNSİYET İKONU */}
-                <div className={`flex items-center justify-center w-8 h-8 rounded-full shadow-lg ${
-                  searchGender === 'female' ? 'bg-pink-500/20 text-pink-500 shadow-pink-500/20' : 
-                  searchGender === 'male' ? 'bg-blue-500/20 text-blue-400 shadow-blue-500/20' : 
-                  'bg-zinc-500/20 text-zinc-400'
-                }`}>
-                    {searchGender === 'female' ? <span className="text-lg font-bold">♀</span> : 
-                    searchGender === 'male' ? <span className="text-lg font-bold">♂</span> : 
-                    <User size={16} />}
-                </div>
-              </div>
-            </div>
-          )}
+       {/* DİNAMİK CİNSİYET İKONU */}
+       <div className={`flex items-center justify-center w-9 h-9 rounded-xl shadow-lg transition-transform hover:scale-110 ${
+         partnerGender === 'female' 
+         ? 'bg-gradient-to-br from-pink-500/20 to-pink-600/40 text-pink-400 border border-pink-500/30' 
+         : 'bg-gradient-to-br from-blue-500/20 to-blue-600/40 text-blue-400 border border-blue-500/30'
+       }`}>
+          <span className="text-xl font-bold drop-shadow-md">
+            {partnerGender === 'female' ? '♀' : '♂'}
+          </span>
+       </div>
+    </div>
+  </div>
+)}
+
+          
             {!isActive && !showModal && (
               <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-xl">
                 <button onClick={toggleActive} className="bg-blue-600 hover:bg-blue-500 text-white px-10 py-5 rounded-[24px] font-black uppercase tracking-widest text-xs flex items-center gap-3"><Play size={20} fill="currentColor"/> Start Chat</button>
