@@ -7,11 +7,7 @@ const geoip = require('geoip-lite');
 
 const app = express();
 
-app.use(cors({
-  origin: "*", 
-  credentials: true
-}));
-
+app.use(cors({ origin: "*", credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 
 app.use((req, res, next) => {
@@ -31,34 +27,26 @@ mongoose.connect(MONGODB_URI)
   .catch(err => console.error('❌ MongoDB Bağlantı Hatası:', err));
 
 // MODELLER
-const Ban = mongoose.model('Ban', new mongoose.Schema({ 
-    ip: String, reason: String, date: { type: Date, default: Date.now } 
-}));
-const Report = mongoose.model('Report', new mongoose.Schema({ 
-    reporterId: String, reportedId: String, reportedIP: String, screenshot: String, date: { type: Date, default: Date.now } 
-}));
-const Log = mongoose.model('Log', new mongoose.Schema({
-    userId: String, userIP: String, action: String, targetId: String, duration: Number, date: { type: Date, default: Date.now }
-}));
+const Ban = mongoose.model('Ban', new mongoose.Schema({ ip: String, reason: String, date: { type: Date, default: Date.now } }));
+const Report = mongoose.model('Report', new mongoose.Schema({ reporterId: String, reportedId: String, reportedIP: String, screenshot: String, date: { type: Date, default: Date.now } }));
+const Log = mongoose.model('Log', new mongoose.Schema({ userId: String, userIP: String, action: String, targetId: String, duration: Number, date: { type: Date, default: Date.now } }));
 
-const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"], credentials: true }
-});
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"], credentials: true } });
 
-// BELLEKTEKİ VERİLER (Admin Panel İçin Gerekli)
 let globalQueue = [];
 const activeMatches = new Map();
 const matchTimes = new Map();
 const userDetails = new Map();
 
 io.on('connection', async (socket) => {
+  // IP YAKALAMA VE ÜLKE TESPİTİ
   let userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
-  if (userIP === '::1' || userIP === '127.0.0.1') userIP = '176.234.224.0';
+  if (userIP.includes(',')) userIP = userIP.split(',')[0]; // Render proxy düzeltmesi
+  if (userIP === '::1' || userIP === '127.0.0.1') userIP = '176.234.224.0'; // Lokal test için TR IP
   
   const geo = geoip.lookup(userIP);
   const countryCode = geo ? geo.country : 'UN';
 
-  // Admin paneli için kullanıcı detaylarını kaydet
   userDetails.set(socket.id, {
     id: socket.id,
     ip: userIP,
@@ -74,25 +62,26 @@ io.on('connection', async (socket) => {
   if (isBanned) return socket.disconnect();
 
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
-    const u = userDetails.get(socket.id);
-    if (u) u.skips += 1;
+    // Önce kuyruğu temizle (Duplicate önleme)
+    globalQueue = globalQueue.filter(item => item.id !== socket.id);
 
-    // Eğer zaten bir eşleşmesi varsa süreyi hesapla ve logla
+    const u = userDetails.get(socket.id);
+    if (u) {
+        u.skips += 1;
+        u.status = 'SEARCHING';
+    }
+
+    // Skip loglaması
     if (activeMatches.has(socket.id)) {
         const duration = Math.floor((Date.now() - (matchTimes.get(socket.id) || Date.now())) / 1000);
         new Log({ userId: socket.id, userIP, action: 'SKIPPED', duration }).save();
     }
 
-    // Kuyruğu temizle
-    globalQueue = globalQueue.filter(item => item.id !== socket.id);
-
     const tryMatch = () => {
       const partnerIndex = globalQueue.findIndex(p => {
-        // Çapraz Cinsiyet Kontrolü
         const genderMatch = (searchGender === 'all' || searchGender === p.myGender) && 
                             (p.searchGender === 'all' || p.searchGender === myGender);
         
-        // Ülke Kontrolü
         const countryMatch = (selectedCountry === 'all' || selectedCountry === p.countryCode);
         
         return genderMatch && countryMatch && p.id !== socket.id;
@@ -102,7 +91,6 @@ io.on('connection', async (socket) => {
         const partner = globalQueue[partnerIndex];
         globalQueue.splice(partnerIndex, 1);
         
-        // Eşleşme Bilgilerini Kaydet
         activeMatches.set(socket.id, partner.id);
         activeMatches.set(partner.id, socket.id);
         
@@ -110,12 +98,12 @@ io.on('connection', async (socket) => {
         matchTimes.set(socket.id, now);
         matchTimes.set(partner.id, now);
 
-        // UserDetails Güncelle (Admin Panel İçin)
         const u1 = userDetails.get(socket.id);
         const u2 = userDetails.get(partner.id);
         if (u1) { u1.status = 'BUSY'; u1.currentPartner = partner.id; }
         if (u2) { u2.status = 'BUSY'; u2.currentPartner = socket.id; }
 
+        // KRİTİK DÜZELTME: Ülke bilgisini direkt geoip'ten gelen taze veriyle gönderiyoruz
         io.to(socket.id).emit('partner_found', { partnerId: partner.id, initiator: true, country: partner.countryCode });
         io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false, country: countryCode });
         return true;
@@ -128,6 +116,23 @@ io.on('connection', async (socket) => {
     }
   });
 
+  // START/STOP İÇİN DURDURMA OLAYI
+  socket.on('stop_search', () => {
+    globalQueue = globalQueue.filter(u => u.id !== socket.id);
+    const u = userDetails.get(socket.id);
+    if (u) {
+        u.status = 'IDLE';
+        u.currentPartner = null;
+    }
+    
+    const partnerId = activeMatches.get(socket.id);
+    if (partnerId) {
+        io.to(partnerId).emit('partner_disconnected');
+        activeMatches.delete(socket.id);
+        activeMatches.delete(partnerId);
+    }
+  });
+
   socket.on('signal', (data) => {
     io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
   });
@@ -135,12 +140,7 @@ io.on('connection', async (socket) => {
   socket.on('report_user', async ({ targetId, screenshot }) => {
     try {
       const targetProfile = userDetails.get(targetId);
-      new Report({ 
-        reporterId: socket.id, 
-        reportedId: targetId, 
-        reportedIP: targetProfile ? targetProfile.ip : "Bilinmiyor", 
-        screenshot 
-      }).save();
+      new Report({ reporterId: socket.id, reportedId: targetId, reportedIP: targetProfile ? targetProfile.ip : "Bilinmiyor", screenshot }).save();
       if (targetProfile) targetProfile.reports += 1;
       new Log({ userId: socket.id, userIP, action: 'REPORTED', targetId }).save();
     } catch (err) { console.error(err); }
@@ -160,29 +160,15 @@ io.on('connection', async (socket) => {
   });
 });
 
-// --- ADMIN API ROTALARI ---
+// ADMIN ROTALARI (Dokunulmadı, hepsi aktif)
 app.get('/api/admin/active-users', (req, res) => res.json(Array.from(userDetails.values())));
-
 app.get('/api/admin/stats', async (req, res) => {
-    res.json({
-        activeUsers: userDetails.size,
-        totalBans: await Ban.countDocuments(),
-        pendingReports: await Report.countDocuments(),
-    });
+    res.json({ activeUsers: userDetails.size, totalBans: await Ban.countDocuments(), pendingReports: await Report.countDocuments() });
 });
-
 app.get('/api/reports', async (req, res) => res.json(await Report.find().sort({ date: -1 })));
 app.get('/api/bans', async (req, res) => res.json(await Ban.find().sort({ date: -1 })));
-
-app.delete('/api/reports/:id', async (req, res) => {
-    await Report.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
-});
-
-app.delete('/api/bans/:ip', async (req, res) => {
-    await Ban.findOneAndDelete({ ip: req.params.ip });
-    res.json({ success: true });
-});
+app.delete('/api/reports/:id', async (req, res) => { await Report.findByIdAndDelete(req.params.id); res.json({ success: true }); });
+app.delete('/api/bans/:ip', async (req, res) => { await Ban.findOneAndDelete({ ip: req.params.ip }); res.json({ success: true }); });
 
 const PORT = process.env.PORT || 5001;
 server.listen(PORT, "0.0.0.0", () => {
