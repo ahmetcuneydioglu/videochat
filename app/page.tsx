@@ -44,6 +44,7 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState("");
   
   const [partnerCountry, setPartnerCountry] = useState<string | null>(null);
+  const [partnerFlag, setPartnerFlag] = useState<string | null>(null); // Yeni: Bayrak için state
   const [isSearching, setIsSearching] = useState(false);
   const [searchStatus, setSearchStatus] = useState("Searching...");
   const [partnerId, setPartnerId] = useState<string | null>(null);
@@ -108,9 +109,13 @@ export default function Home() {
       const countryCode = (data.country || "UN").toUpperCase();
       const countryObj = allCountries.find(c => c.id === countryCode);
       const countryName = countryObj ? countryObj.name : "Global";
+      
       setPartnerCountry(countryName);
+      setPartnerFlag(countryObj ? countryObj.flag : "🌐"); // Bayrağı ata
+      
       setIsSearching(false); 
       initiatePeer(data.partnerId, data.initiator);
+
       setMatchNotification(`Matched with ${countryName}`);
       setTimeout(() => setMatchNotification(null), 4000);
     });
@@ -132,6 +137,7 @@ export default function Home() {
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     setPartnerId(null);
     setPartnerCountry(null);
+    setPartnerFlag(null);
     setMatchNotification(null);
   };
 
@@ -196,7 +202,7 @@ export default function Home() {
       style={{ height: 'var(--vv-height, 100vh)' }}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
-      {/* MODALLAR */}
+      {/* MODALLAR (AYNI KALDI) */}
       {showOptions && (
         <div className="fixed inset-0 z-[700] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
           <div className="bg-[#121214] border border-white/10 w-full max-w-xs rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95 duration-200">
@@ -257,6 +263,23 @@ export default function Home() {
           {/* ÜST VİDEO */}
           <div className="absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+            
+            {/* GÖRSEL 2: VİDEO ÜZERİ KULLANICI BİLGİ ETİKETİ */}
+            {!isSearching && isActive && partnerId && (
+              <div className="absolute top-6 left-6 z-[60] animate-in slide-in-from-left-4 duration-500">
+                <div className="flex items-center gap-2 bg-black/50 backdrop-blur-md border border-white/10 px-4 py-2 rounded-2xl shadow-2xl">
+                   <span className="text-xl">{partnerFlag}</span>
+                   <div className="flex flex-col">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-white/90 leading-tight">Stranger</span>
+                      <span className="text-[11px] font-bold text-blue-400 leading-tight">{partnerCountry}</span>
+                   </div>
+                   <div className="ml-2 pl-2 border-l border-white/10">
+                      <User size={14} className="text-zinc-400" />
+                   </div>
+                </div>
+              </div>
+            )}
+
             {!isActive && !showModal && (
               <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-xl">
                 <button onClick={toggleActive} className="bg-blue-600 hover:bg-blue-500 text-white px-10 py-5 rounded-[24px] font-black uppercase tracking-widest text-xs flex items-center gap-3"><Play size={20} fill="currentColor"/> Start Chat</button>
@@ -268,15 +291,14 @@ export default function Home() {
                 <p className="text-[9px] font-black uppercase tracking-[0.3em] text-blue-400">Searching...</p>
               </div>
             )}
-            <div className="absolute top-6 left-6 z-50 flex flex-col gap-2">
-              <h1 className="text-2xl font-black italic text-blue-500 tracking-tighter">OMEGPT</h1>
-              {partnerCountry && isActive && !isSearching && (
-                <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-[9px] font-bold uppercase tracking-widest flex items-center gap-2">🌍 {partnerCountry}</div>
-              )}
+            
+            {/* LOGO (BİLGİ ETİKETİ VARKEN ÜSTTE DURABİLİR VEYA SAĞA ALINABİLİR) */}
+            <div className="absolute top-6 right-6 z-50">
+              <h1 className="text-xl font-black italic text-blue-500 tracking-tighter drop-shadow-lg">OMEGPT</h1>
             </div>
           </div>
 
-          {/* ALT VİDEO */}
+          {/* ALT VİDEO (AYNI KALDI) */}
           <div className="absolute bottom-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900">
             <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
             {!showModal && (
@@ -287,7 +309,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* MESAJ BALONLARI */}
             <div className="md:hidden absolute bottom-28 left-6 right-20 z-40 flex flex-col justify-end max-h-[220px] overflow-y-auto no-scrollbar pointer-events-none">
                 {messages.map((m, i) => (
                     <div key={i} className={`px-3 py-1.5 rounded-xl text-[10px] mb-1.5 w-fit max-w-[90%] backdrop-blur-md border border-white/10 ${m.sender === "Me" ? "bg-blue-600/60" : "bg-zinc-800/80"}`}>
@@ -298,7 +319,6 @@ export default function Home() {
                 <div ref={mobileChatEndRef} />
             </div>
 
-            {/* KONTROL BAR */}
             {!showModal && (
               <div className="md:hidden absolute bottom-6 left-1/2 -translate-x-1/2 w-[92%] h-16 bg-white/5 backdrop-blur-3xl border border-white/10 rounded-[28px] flex items-center justify-between px-6 z-[100] shadow-2xl">
                 <button onClick={toggleActive} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${isActive ? 'bg-red-500/20 text-red-500 border border-red-500/20' : 'bg-green-500/20 text-green-500 border border-green-500/20'}`}>
@@ -320,7 +340,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* WEB CHAT AREA */}
+        {/* WEB CHAT AREA (AYNI KALDI) */}
         <div className="hidden md:flex flex-1 flex-col bg-[#080808] border-l border-white/5 relative z-20">
           <div className="p-6 border-b border-white/5 flex items-center justify-between font-black text-zinc-500 uppercase tracking-[0.3em] text-[10px]">Interaction Area
             {!showModal && (
@@ -349,7 +369,7 @@ export default function Home() {
         </div>
       </main>
 
-      {/* LOGIN SCREEN */}
+      {/* LOGIN SCREEN (AYNI KALDI) */}
       {showModal && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/85 backdrop-blur-2xl">
             <div className="relative max-w-sm w-full bg-[#111113] border border-white/10 p-10 rounded-[48px] text-center space-y-10 shadow-2xl">

@@ -103,8 +103,10 @@ io.on('connection', async (socket) => {
         if (u2) { u2.status = 'BUSY'; u2.currentPartner = socket.id; }
 
         // KRİTİK: country bilgisini taze GeoIP verisinden gönderiyoruz
-        io.to(socket.id).emit('partner_found', { partnerId: partner.id, initiator: true, country: partner.countryCode });
-        io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false, country: countryCode });
+        io.to(socket.id).emit('partner_found', { partnerId: partner.id, initiator: true, country: partner.countryCode,
+        partnerGender: partner.myGender });
+        io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false, country: countryCode,
+        partnerGender: partner.myGender });
         return true;
       }
       return false;
