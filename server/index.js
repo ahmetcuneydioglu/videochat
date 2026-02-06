@@ -20,31 +20,29 @@ app.use((req, res, next) => {
 
 const server = http.createServer(app);
 
-// MongoDB bağlantısı (Senin URL'in kalsın)
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ahmetcnd:Ahmet263271@videochat.vok6vud.mongodb.net/?appName=videochat';
 
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('✅ MongoDB Bağlantısı Başarılı'))
   .catch(err => console.error('❌ MongoDB Bağlantı Hatası:', err));
 
-// MODELLER
-const Ban = mongoose.model('Ban', new mongoose.Schema({ ip: String, reason: String, date: { type: Date, default: Date.now } }));
-const Report = mongoose.model('Report', new mongoose.Schema({ reporterId: String, reportedId: String, reportedIP: String, screenshot: String, date: { type: Date, default: Date.now } }));
-const Log = mongoose.model('Log', new mongoose.Schema({ userId: String, userIP: String, action: String, targetId: String, duration: Number, date: { type: Date, default: Date.now } }));
-
+// --- MODELLER ---
 const UserSchema = new mongoose.Schema({
-  googleId: { type: String, unique: true, sparse: true }, // Google'dan gelen eşsiz ID
+  googleId: { type: String, unique: true, sparse: true },
   email: { type: String, unique: true, sparse: true },
   name: String,
   avatar: String,
-  likes: { type: Number, default: 0 }, // Toplam kalp puanı
+  likes: { type: Number, default: 0 },
   isRegistered: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 
 const User = mongoose.model('User', UserSchema);
+const Ban = mongoose.model('Ban', new mongoose.Schema({ ip: String, reason: String, date: { type: Date, default: Date.now } }));
+const Report = mongoose.model('Report', new mongoose.Schema({ reporterId: String, reportedId: String, reportedIP: String, screenshot: String, date: { type: Date, default: Date.now } }));
+const Log = mongoose.model('Log', new mongoose.Schema({ userId: String, userIP: String, action: String, targetId: String, duration: Number, date: { type: Date, default: Date.now } }));
 
-// Sosyal Login için API Rotası
+// --- API ROTALARI ---
 app.post('/api/auth/social-login', async (req, res) => {
   const { googleId, email, name, avatar } = req.body;
   try {
@@ -55,7 +53,7 @@ app.post('/api/auth/social-login', async (req, res) => {
     }
     res.json(user);
   } catch (err) {
-    res.status(500).json({ error: "Giriş yapılamadı" });
+    res.status(500).json({ error: "Giriş hatası" });
   }
 });
 
@@ -63,7 +61,6 @@ const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"], c
 
 let globalQueue = [];
 const activeMatches = new Map();
-const matchTimes = new Map();
 const userDetails = new Map();
 
 io.on('connection', async (socket) => {
@@ -74,106 +71,72 @@ io.on('connection', async (socket) => {
   const geo = geoip.lookup(userIP);
   const countryCode = geo ? geo.country : 'UN';
 
-    const dbUserId = socket.handshake.query.dbUserId; 
-        let initialLikes = 0;
+  // --- KRİTİK DÜZELTME: Veritabanı Bilgilerini Çekme ---
+  const dbUserId = socket.handshake.query.dbUserId; 
+  let currentLikes = 0;
+  let isRegistered = false;
 
-        if (dbUserId && mongoose.Types.ObjectId.isValid(dbUserId)) {
-        const dbUser = await User.findById(dbUserId);
-        if (dbUser) initialLikes = dbUser.likes;
-        }
+  if (dbUserId && mongoose.Types.ObjectId.isValid(dbUserId)) {
+    const dbUser = await User.findById(dbUserId);
+    if (dbUser) {
+      currentLikes = dbUser.likes;
+      isRegistered = true;
+    }
+  }
 
   userDetails.set(socket.id, {
     id: socket.id,
-    dbId: dbUserId || null, // Veritabanı ID'si
-    likes: initialLikes,    // Veritabanından gelen güncel beğeni
-    isRegistered: !!dbUserId,
+    dbId: dbUserId || null,
     ip: userIP,
     country: countryCode,
-    joinedAt: new Date(),
-    skips: 0,
-    reports: 0,
     status: 'IDLE',
-    currentPartner: null,
-    myGender: 'male' 
+    likes: currentLikes,
+    isRegistered: isRegistered,
+    myGender: 'male'
   });
 
   const isBanned = await Ban.findOne({ ip: userIP });
   if (isBanned) return socket.disconnect();
 
-    socket.on('like_partner', async ({ targetId }) => {
-    const me = userDetails.get(socket.id);
-    const partner = userDetails.get(targetId);
-
-    // Sadece kayıtlı (login olmuş) kişiler like atabilir kuralını buraya koyabiliriz
-    if (!me || !me.isRegistered) {
-        return socket.emit('error_msg', "Beğeni atmak için giriş yapmalısın!");
-    }
-
-    if (partner && partner.dbId) {
-        // Veritabanında partnerin puanını artır
-        await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
-        
-        // Partnerin o anki oturumdaki puanını da güncelle
-        partner.likes += 1;
-
-        // Karşı tarafa "Seni beğendiler!" sinyali gönder (Görsel efekt için)
-        io.to(targetId).emit('receive_like', { newLikes: partner.likes });
-        
-        // Log tut
-        new Log({ userId: socket.id, action: 'LIKED', targetId }).save();
-    }
-    });
-
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
-    // 1. Önceki kuyruk kayıtlarını temizle
     globalQueue = globalQueue.filter(item => item.id !== socket.id);
-
     const u = userDetails.get(socket.id);
-    if (u) {
-        u.skips += 1;
-        u.status = 'SEARCHING';
-        u.myGender = myGender; 
-    }
+    if (u) { u.status = 'SEARCHING'; u.myGender = myGender; }
 
     const tryMatch = () => {
       const partnerIndex = globalQueue.findIndex(p => {
-        // CİNSİYET EŞLEŞME MANTIĞI: 
-        // 1. Karşı taraf benim aradığım cinsiyet mi? (VEYA herkes olur mu?)
-        // 2. Ben karşı tarafın aradığı cinsiyet miyim? (VEYA karşı taraf için herkes olur mu?)
         const genderMatch = (searchGender === 'all' || searchGender === p.myGender) && 
                             (p.searchGender === 'all' || p.searchGender === myGender);
-        
-        // ÜLKE EŞLEŞME MANTIĞI:
-        // Eğer ben belirli bir ülke seçtiysem o olmalı.
         const countryMatch = (selectedCountry === 'all' || selectedCountry === p.countryCode);
-        
         return genderMatch && countryMatch && p.id !== socket.id;
       });
 
       if (partnerIndex !== -1) {
         const partner = globalQueue[partnerIndex];
-        globalQueue.splice(partnerIndex, 1);
+        const pDetails = userDetails.get(partner.id);
+        const myDetails = userDetails.get(socket.id);
         
+        globalQueue.splice(partnerIndex, 1);
         activeMatches.set(socket.id, partner.id);
         activeMatches.set(partner.id, socket.id);
         
-        const u1 = userDetails.get(socket.id);
-        const u2 = userDetails.get(partner.id);
-        if (u1) { u1.status = 'BUSY'; u1.currentPartner = partner.id; }
-        if (u2) { u2.status = 'BUSY'; u2.currentPartner = socket.id; }
+        if (myDetails) myDetails.status = 'BUSY';
+        if (pDetails) pDetails.status = 'BUSY';
 
-        // Frontend'e birbirlerinin bilgilerini gönder
+        // --- PARTNER FOUND: Likes bilgisini ekledik ---
         io.to(socket.id).emit('partner_found', { 
             partnerId: partner.id, 
             initiator: true, 
             country: partner.countryCode,
-            partnerGender: partner.myGender 
+            partnerGender: partner.myGender,
+            partnerLikes: pDetails ? pDetails.likes : 0 // Partnerin puanı
         });
         io.to(partner.id).emit('partner_found', { 
             partnerId: socket.id, 
             initiator: false, 
             country: countryCode,
-            partnerGender: myGender 
+            partnerGender: myGender,
+            partnerLikes: myDetails ? myDetails.likes : 0 // Senin puanın
         });
         return true;
       }
@@ -181,30 +144,29 @@ io.on('connection', async (socket) => {
     };
 
     if (!tryMatch()) {
-      // Kuyruğa eklerken tüm filtreleri kaydediyoruz
-      globalQueue.push({ 
-          id: socket.id, 
-          myGender, 
-          searchGender, 
-          countryCode, 
-          selectedCountry 
-      });
+      globalQueue.push({ id: socket.id, myGender, searchGender, countryCode, selectedCountry });
+    }
+  });
+
+  // --- LIKE (KALP) OLAYI ---
+  socket.on('like_partner', async ({ targetId }) => {
+    const me = userDetails.get(socket.id);
+    const partner = userDetails.get(targetId);
+
+    if (partner && partner.dbId) {
+      await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
+      partner.likes += 1;
+      io.to(targetId).emit('receive_like', { newLikes: partner.likes });
+      new Log({ userId: socket.id, action: 'LIKED', targetId }).save();
     }
   });
 
   socket.on('stop_search', () => {
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
     const u = userDetails.get(socket.id);
-    if (u) {
-        u.status = 'IDLE';
-        u.currentPartner = null;
-    }
+    if (u) u.status = 'IDLE';
     const partnerId = activeMatches.get(socket.id);
-    if (partnerId) {
-        io.to(partnerId).emit('partner_disconnected');
-        activeMatches.delete(socket.id);
-        activeMatches.delete(partnerId);
-    }
+    if (partnerId) io.to(partnerId).emit('partner_disconnected');
   });
 
   socket.on('signal', (data) => {
@@ -212,14 +174,8 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('disconnect', () => {
-    const partnerId = activeMatches.get(socket.id);
-    if (partnerId) {
-      io.to(partnerId).emit('partner_disconnected');
-      activeMatches.delete(partnerId);
-    }
     userDetails.delete(socket.id);
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
-    activeMatches.delete(socket.id);
   });
 });
 

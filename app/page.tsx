@@ -6,14 +6,19 @@ import { countries as rawCountries } from 'countries-list';
 import { 
   Video, VideoOff, Mic, MicOff, RefreshCw, 
   User, Flag, Settings, MessageCircle, X, 
-  Play, Square, SkipForward, Globe, Check
+  Play, Square, SkipForward, Globe, Check, Heart, ShieldAlert
 } from 'lucide-react';
 
 if (typeof window !== "undefined" && typeof (window as any).global === "undefined") {
   (window as any).global = window;
 }
 
-const socket = io("https://videochat-1qxi.onrender.com/", { transports: ["websocket"], secure: true });
+// Socket bağlantısına dbUserId eklemek için query kısmını hazırlıyoruz
+const socket = io("https://videochat-1qxi.onrender.com/", { 
+  transports: ["websocket"], 
+  secure: true,
+  query: typeof window !== "undefined" ? { dbUserId: localStorage.getItem("dbUserId") } : {}
+});
 
 export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
@@ -43,12 +48,16 @@ export default function Home() {
   
   const [partnerCountry, setPartnerCountry] = useState<string | null>(null);
   const [partnerFlag, setPartnerFlag] = useState<string | null>(null);
+  const [partnerLikes, setPartnerLikes] = useState(0); // YENİ: Partnerin beğenisi
   const [isSearching, setIsSearching] = useState(false);
   const [partnerId, setPartnerId] = useState<string | null>(null);
   const [messages, setMessages] = useState<{ sender: string, text: string }[]>([]);
   const [inputText, setInputText] = useState("");
   const [isMobileInputActive, setIsMobileInputActive] = useState(false);
   const [matchNotification, setMatchNotification] = useState<string | null>(null);
+
+  // YENİ: Kullanıcı Kayıt State'i
+  const [dbUserId, setDbUserId] = useState<string | null>(null);
 
   const getFlagEmoji = (countryCode: string) => {
     if (countryCode === "all" || countryCode === "UN") return "🌐";
@@ -71,6 +80,7 @@ export default function Home() {
 
   useEffect(() => {
     setIsMounted(true);
+    setDbUserId(localStorage.getItem("dbUserId"));
     const setHeight = () => document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
     setHeight();
     window.addEventListener('resize', setHeight);
@@ -99,6 +109,7 @@ export default function Home() {
         setMessages([]); 
         setPartnerId(data.partnerId); 
         setPartnerGender(data.partnerGender || 'male'); 
+        setPartnerLikes(data.partnerLikes || 0); // YENİ: Beğeni verisini al
         
         const countryCode = (data.country || "UN").toUpperCase();
         const countryObj = allCountries.find(c => c.id === countryCode);
@@ -111,6 +122,13 @@ export default function Home() {
         setTimeout(() => setMatchNotification(null), 4000);
     });
 
+    // YENİ: Beğeni alındığında tetiklenir
+    socket.on("receive_like", (data) => {
+      setPartnerLikes(data.newLikes);
+      setMatchNotification("You received a heart! ❤️");
+      setTimeout(() => setMatchNotification(null), 3000);
+    });
+
     socket.on("partner_disconnected", () => {
       cleanUpPeer();
       if (isActive) setTimeout(() => handleNext(), 1000);
@@ -120,7 +138,12 @@ export default function Home() {
         if (peerRef.current) peerRef.current.signal(data.signal);
     });
 
-    return () => { socket.off("partner_found"); socket.off("partner_disconnected"); socket.off("signal"); };
+    return () => { 
+      socket.off("partner_found"); 
+      socket.off("partner_disconnected"); 
+      socket.off("signal"); 
+      socket.off("receive_like");
+    };
   }, [isMounted, allCountries, isActive]);
 
   const cleanUpPeer = () => {
@@ -130,6 +153,7 @@ export default function Home() {
     setPartnerCountry(null);
     setPartnerFlag(null);
     setPartnerGender(null);
+    setPartnerLikes(0);
   };
 
   function initiatePeer(targetId: string, initiator: boolean) {
@@ -149,6 +173,43 @@ export default function Home() {
     cleanUpPeer();
     setIsSearching(true);
     socket.emit("find_partner", { myGender, searchGender, selectedCountry });
+  };
+
+  // YENİ: Kalp Atma Fonksiyonu
+  const handleLike = () => {
+    if (!dbUserId) {
+      alert("Please login to send likes!");
+      return;
+    }
+    if (partnerId) {
+      socket.emit("like_partner", { targetId: partnerId });
+    }
+  };
+
+  // YENİ: Rapor Etme Fonksiyonu
+  const handleReport = () => {
+    if (partnerId) {
+      const canvas = document.createElement("canvas");
+      if (remoteVideoRef.current) {
+        canvas.width = remoteVideoRef.current.videoWidth;
+        canvas.height = remoteVideoRef.current.videoHeight;
+        canvas.getContext("2d")?.drawImage(remoteVideoRef.current, 0, 0);
+        const screenshot = canvas.toDataURL("image/jpeg", 0.5);
+        
+        fetch("https://videochat-1qxi.onrender.com/api/report-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            reporterId: socket.id, 
+            reportedId: partnerId, 
+            screenshot 
+          })
+        }).then(() => {
+          alert("User reported!");
+          handleNext();
+        });
+      }
+    }
   };
 
   const toggleActive = () => {
@@ -284,13 +345,38 @@ export default function Home() {
                         <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
                         <span className="text-[11px] font-black text-white uppercase leading-none">{partnerCountry}</span>
                       </div>
-                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mt-1">Live Connection</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Live</span>
+                        {/* YENİ: Beğeni Puanı Göstergesi */}
+                        <div className="flex items-center gap-1 bg-pink-500/10 px-1.5 py-0.5 rounded-md">
+                          <Heart size={8} className="text-pink-500 fill-pink-500" />
+                          <span className="text-[9px] font-black text-pink-500">{partnerLikes}</span>
+                        </div>
+                      </div>
                    </div>
                    <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
                    <div className={`flex items-center justify-center w-9 h-9 rounded-xl ${partnerGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>
                       <span className="text-xl font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
                    </div>
                 </div>
+              </div>
+            )}
+
+            {/* YENİ: Ekranda Uçuşan Kalp/Rapor Butonları (Remote Video Üzerinde) */}
+            {!isSearching && isActive && partnerId && (
+              <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-[70]">
+                <button 
+                  onClick={handleReport}
+                  className="w-12 h-12 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center text-zinc-400 hover:text-red-500 transition-all active:scale-90"
+                >
+                  <ShieldAlert size={24} />
+                </button>
+                <button 
+                  onClick={handleLike}
+                  className="w-14 h-14 bg-pink-600/20 backdrop-blur-2xl border border-pink-500/30 rounded-full flex items-center justify-center text-pink-500 shadow-2xl shadow-pink-500/20 active:scale-90 transition-all group"
+                >
+                  <Heart size={28} className="group-hover:fill-pink-500 transition-all" />
+                </button>
               </div>
             )}
 
@@ -390,6 +476,21 @@ export default function Home() {
                   <h2 className="text-5xl font-black italic tracking-tighter text-blue-500 uppercase drop-shadow-2xl">OMEGPT</h2>
                   <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-[0.4em]">Premium Network</p>
                 </div>
+                
+                {/* YENİ: Kayıt Olmaya Teşvik ve Google Login Placeholder */}
+                <div className="bg-white/5 p-6 rounded-3xl border border-white/10">
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-4 leading-relaxed">
+                    Login to collect <span className="text-pink-500">hearts</span> and build your reputation.
+                  </p>
+                  {/* Buraya handleGoogleSuccess fonksiyonunla çalışan butonu ekleyeceksin */}
+                  <button 
+                    onClick={() => alert("Google Login logic will be here!")}
+                    className="w-full bg-white text-black py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-zinc-200 transition-all"
+                  >
+                    Login with Google
+                  </button>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                     <button onClick={() => setMyGender("male")} className={`flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "male" ? "bg-blue-600/10 border-blue-500 text-blue-500 shadow-lg shadow-blue-500/20" : "bg-black/20 border-white/5 text-zinc-500"}`}>
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${myGender === "male" ? "bg-blue-500 text-white" : "bg-zinc-800"}`}>♂</div>
