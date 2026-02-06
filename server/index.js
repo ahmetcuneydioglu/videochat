@@ -4,6 +4,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const geoip = require('geoip-lite');
+const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
 
@@ -43,34 +44,35 @@ const Report = mongoose.model('Report', new mongoose.Schema({ reporterId: String
 const Log = mongoose.model('Log', new mongoose.Schema({ userId: String, userIP: String, action: String, targetId: String, duration: Number, date: { type: Date, default: Date.now } }));
 
 // --- API ROTALARI ---
-        const { OAuth2Client } = require('google-auth-library');
-        const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const client = new OAuth2Client("18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com");
 
-        app.post('/api/auth/social-login', async (req, res) => {
-        const { token } = req.body;
-        try {
-            const ticket = await client.verifyIdToken({
-                idToken: token,
-                audience: process.env.GOOGLE_CLIENT_ID,
-            });
-            const payload = ticket.getPayload();
-            
-            let user = await User.findOne({ googleId: payload['sub'] });
-            if (!user) {
-            user = new User({ 
-                googleId: payload['sub'], 
-                email: payload['email'], 
-                name: payload['name'], 
-                avatar: payload['picture'],
-                isRegistered: true 
-            });
-            await user.save();
-            }
-            res.json(user);
-        } catch (err) {
-            res.status(500).json({ error: "Auth failed" });
-        }
-        });
+app.post('/api/auth/social-login', async (req, res) => {
+  const { token } = req.body;
+  try {
+    const ticket = await client.verifyIdToken({
+        idToken: token,
+        audience: "18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com",
+    });
+    const payload = ticket.getPayload();
+    const googleId = payload['sub'];
+
+    let user = await User.findOne({ googleId });
+    if (!user) {
+      user = new User({ 
+        googleId: googleId, 
+        email: payload['email'], 
+        name: payload['name'], 
+        avatar: payload['picture'],
+        isRegistered: true 
+      });
+      await user.save();
+    }
+    res.json(user);
+  } catch (err) {
+    console.error("Auth Hatası:", err);
+    res.status(500).json({ error: "Giriş başarısız" });
+  }
+});
 
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"], credentials: true } });
 
@@ -86,7 +88,6 @@ io.on('connection', async (socket) => {
   const geo = geoip.lookup(userIP);
   const countryCode = geo ? geo.country : 'UN';
 
-  // --- KRİTİK DÜZELTME: Veritabanı Bilgilerini Çekme ---
   const dbUserId = socket.handshake.query.dbUserId; 
   let currentLikes = 0;
   let isRegistered = false;
@@ -108,6 +109,20 @@ io.on('connection', async (socket) => {
     likes: currentLikes,
     isRegistered: isRegistered,
     myGender: 'male'
+  });
+
+  // --- YENİ: Login sonrası senkronizasyon ---
+  socket.on("user_logged_in", async ({ dbUserId }) => {
+    const u = userDetails.get(socket.id);
+    if (u && mongoose.Types.ObjectId.isValid(dbUserId)) {
+      const dbUser = await User.findById(dbUserId);
+      if (dbUser) {
+        u.dbId = dbUserId;
+        u.likes = dbUser.likes;
+        u.isRegistered = true;
+        console.log(`✅ Kullanıcı bağlandı ve doğrulandı: ${dbUser.name}`);
+      }
+    }
   });
 
   const isBanned = await Ban.findOne({ ip: userIP });
@@ -138,20 +153,19 @@ io.on('connection', async (socket) => {
         if (myDetails) myDetails.status = 'BUSY';
         if (pDetails) pDetails.status = 'BUSY';
 
-        // --- PARTNER FOUND: Likes bilgisini ekledik ---
         io.to(socket.id).emit('partner_found', { 
             partnerId: partner.id, 
             initiator: true, 
             country: partner.countryCode,
             partnerGender: partner.myGender,
-            partnerLikes: pDetails ? pDetails.likes : 0 // Partnerin puanı
+            partnerLikes: pDetails ? pDetails.likes : 0
         });
         io.to(partner.id).emit('partner_found', { 
             partnerId: socket.id, 
             initiator: false, 
             country: countryCode,
             partnerGender: myGender,
-            partnerLikes: myDetails ? myDetails.likes : 0 // Senin puanın
+            partnerLikes: myDetails ? myDetails.likes : 0
         });
         return true;
       }
@@ -163,16 +177,18 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // --- LIKE (KALP) OLAYI ---
   socket.on('like_partner', async ({ targetId }) => {
     const me = userDetails.get(socket.id);
     const partner = userDetails.get(targetId);
+
+    // Sadece kayıtlı olanlar beğeni gönderebilir
+    if (!me || !me.isRegistered) return;
 
     if (partner && partner.dbId) {
       await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
       partner.likes += 1;
       io.to(targetId).emit('receive_like', { newLikes: partner.likes });
-      new Log({ userId: socket.id, action: 'LIKED', targetId }).save();
+      new Log({ userId: socket.id, userIP: me.ip, action: 'LIKED', targetId }).save();
     }
   });
 

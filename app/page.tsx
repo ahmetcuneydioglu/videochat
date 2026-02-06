@@ -82,7 +82,9 @@ export default function Home() {
 
   useEffect(() => {
     setIsMounted(true);
-    setDbUserId(localStorage.getItem("dbUserId"));
+    const storedId = localStorage.getItem("dbUserId");
+    if (storedId) setDbUserId(storedId);
+    
     const setHeight = () => document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
     setHeight();
     window.addEventListener('resize', setHeight);
@@ -126,7 +128,7 @@ export default function Home() {
 
     socket.on("receive_like", (data) => {
       setPartnerLikes(data.newLikes);
-      setMatchNotification("You received a heart! ❤️");
+      setMatchNotification("Someone loved your vibe! ❤️");
       setTimeout(() => setMatchNotification(null), 3000);
     });
 
@@ -178,7 +180,7 @@ export default function Home() {
 
   const handleLike = () => {
     if (!dbUserId) {
-      alert("Please login to send likes!");
+      alert("Please login with Google to send hearts! ❤️");
       return;
     }
     if (partnerId) {
@@ -249,7 +251,7 @@ export default function Home() {
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <div className="fixed inset-0 w-full h-full bg-[#050505] text-white flex flex-col font-sans overflow-hidden select-none" style={{ height: 'var(--vv-height, 100vh)' }}>
         
-        {/* MODALLAR */}
+        {/* --- MODALLAR --- */}
         {showCountryFilter && (
           <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <div className="bg-[#121214] border border-white/10 w-full max-w-sm rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95">
@@ -326,7 +328,6 @@ export default function Home() {
 
         <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
           <div className="flex-1 relative md:max-w-[50%] h-full bg-black">
-            
             <div className="absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5">
               <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
               
@@ -471,8 +472,13 @@ export default function Home() {
                             body: JSON.stringify({ token: credentialResponse.credential }) 
                           });
                           const userData = await res.json();
+                          
                           setDbUserId(userData._id);
                           localStorage.setItem("dbUserId", userData._id);
+                          
+                          // YENİ: Login sonrası socket'e haber ver
+                          socket.emit("user_logged_in", { dbUserId: userData._id });
+                          
                           alert("Login successful!");
                         }}
                         onError={() => console.log('Login Failed')}
