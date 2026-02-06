@@ -265,21 +265,42 @@ export default function Home() {
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
             
             {/* GÖRSEL 2: VİDEO ÜZERİ KULLANICI BİLGİ ETİKETİ */}
-            {!isSearching && isActive && partnerId && (
-              <div className="absolute top-6 left-6 z-[60] animate-in slide-in-from-left-4 duration-500">
-                <div className="flex items-center gap-2 bg-black/50 backdrop-blur-md border border-white/10 px-4 py-2 rounded-2xl shadow-2xl">
-                   <span className="text-xl">{partnerFlag}</span>
-                   <div className="flex flex-col">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-white/90 leading-tight">Stranger</span>
-                      <span className="text-[11px] font-bold text-blue-400 leading-tight">{partnerCountry}</span>
-                   </div>
-                   <div className="ml-2 pl-2 border-l border-white/10">
-                      <User size={14} className="text-zinc-400" />
-                   </div>
+            {/* ÜST VİDEO ÜZERİNDEKİ YENİ ESTETİK BİLGİ ETİKETİ */}
+          {!isSearching && isActive && partnerId && (
+            <div className="absolute top-6 left-6 z-[60] animate-in fade-in slide-in-from-left-6 duration-700">
+              <div className="flex items-center gap-3 bg-white/10 backdrop-blur-2xl border border-white/20 pl-2 pr-4 py-1.5 rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-all hover:bg-white/15">
+                
+                {/* BAYRAK ALANI */}
+                <div className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full text-2xl shadow-inner">
+                    {partnerFlag}
+                </div>
+
+                {/* ÜLKE VE CİNSİYET BİLGİSİ */}
+                <div className="flex flex-col">
+                    <span className="text-[11px] font-black text-white/90 tracking-tight leading-none">
+                      {partnerCountry}
+                    </span>
+                    <span className="text-[9px] font-bold text-blue-400/80 uppercase tracking-[0.1em] mt-0.5">
+                      Verified Partner
+                    </span>
+                </div>
+
+                {/* AYRIŞTIRICI ÇİZGİ */}
+                <div className="h-6 w-[1px] bg-white/10 ml-1"></div>
+
+                {/* DİNAMİK CİNSİYET İKONU */}
+                <div className={`flex items-center justify-center w-8 h-8 rounded-full shadow-lg ${
+                  searchGender === 'female' ? 'bg-pink-500/20 text-pink-500 shadow-pink-500/20' : 
+                  searchGender === 'male' ? 'bg-blue-500/20 text-blue-400 shadow-blue-500/20' : 
+                  'bg-zinc-500/20 text-zinc-400'
+                }`}>
+                    {searchGender === 'female' ? <span className="text-lg font-bold">♀</span> : 
+                    searchGender === 'male' ? <span className="text-lg font-bold">♂</span> : 
+                    <User size={16} />}
                 </div>
               </div>
-            )}
-
+            </div>
+          )}
             {!isActive && !showModal && (
               <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-xl">
                 <button onClick={toggleActive} className="bg-blue-600 hover:bg-blue-500 text-white px-10 py-5 rounded-[24px] font-black uppercase tracking-widest text-xs flex items-center gap-3"><Play size={20} fill="currentColor"/> Start Chat</button>
