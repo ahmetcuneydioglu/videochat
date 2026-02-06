@@ -15,7 +15,6 @@ if (typeof window !== "undefined" && typeof (window as any).global === "undefine
   (window as any).global = window;
 }
 
-// Socket bağlantısına dbUserId eklemek için query kısmını hazırlıyoruz
 const socket = io("https://videochat-1qxi.onrender.com/", { 
   transports: ["websocket"], 
   secure: true,
@@ -52,7 +51,7 @@ export default function Home() {
   
   const [partnerCountry, setPartnerCountry] = useState<string | null>(null);
   const [partnerFlag, setPartnerFlag] = useState<string | null>(null);
-  const [partnerLikes, setPartnerLikes] = useState(0); // YENİ: Partnerin beğenisi
+  const [partnerLikes, setPartnerLikes] = useState(0); 
   const [isSearching, setIsSearching] = useState(false);
   const [partnerId, setPartnerId] = useState<string | null>(null);
   const [messages, setMessages] = useState<{ sender: string, text: string }[]>([]);
@@ -60,7 +59,6 @@ export default function Home() {
   const [isMobileInputActive, setIsMobileInputActive] = useState(false);
   const [matchNotification, setMatchNotification] = useState<string | null>(null);
 
-  // YENİ: Kullanıcı Kayıt State'i
   const [dbUserId, setDbUserId] = useState<string | null>(null);
 
   const getFlagEmoji = (countryCode: string) => {
@@ -113,7 +111,7 @@ export default function Home() {
         setMessages([]); 
         setPartnerId(data.partnerId); 
         setPartnerGender(data.partnerGender || 'male'); 
-        setPartnerLikes(data.partnerLikes || 0); // YENİ: Beğeni verisini al
+        setPartnerLikes(data.partnerLikes || 0); 
         
         const countryCode = (data.country || "UN").toUpperCase();
         const countryObj = allCountries.find(c => c.id === countryCode);
@@ -126,7 +124,6 @@ export default function Home() {
         setTimeout(() => setMatchNotification(null), 4000);
     });
 
-    // YENİ: Beğeni alındığında tetiklenir
     socket.on("receive_like", (data) => {
       setPartnerLikes(data.newLikes);
       setMatchNotification("You received a heart! ❤️");
@@ -179,7 +176,6 @@ export default function Home() {
     socket.emit("find_partner", { myGender, searchGender, selectedCountry });
   };
 
-  // YENİ: Kalp Atma Fonksiyonu
   const handleLike = () => {
     if (!dbUserId) {
       alert("Please login to send likes!");
@@ -190,7 +186,6 @@ export default function Home() {
     }
   };
 
-  // YENİ: Rapor Etme Fonksiyonu
   const handleReport = () => {
     if (partnerId) {
       const canvas = document.createElement("canvas");
@@ -251,299 +246,265 @@ export default function Home() {
   if (!isMounted) return null;
 
   return (
-    <div className="fixed inset-0 w-full h-full bg-[#050505] text-white flex flex-col font-sans overflow-hidden select-none" style={{ height: 'var(--vv-height, 100vh)' }}>
-      
-      {/* --- MODALLAR --- */}
-      
-      {/* Ülke Filtresi Modalı */}
-      {showCountryFilter && (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-          <div className="bg-[#121214] border border-white/10 w-full max-w-sm rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95">
-            <div className="p-4 border-b border-white/5 flex items-center justify-between">
-              <h3 className="text-blue-500 font-bold uppercase text-xs tracking-widest">Region Selection</h3>
-              <button onClick={() => setShowCountryFilter(false)}><X size={20}/></button>
-            </div>
-            <div className="p-4">
-              <input 
-                type="text" 
-                placeholder="Search country..." 
-                className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 mb-4 outline-none text-xs focus:ring-1 ring-blue-500" 
-                value={searchTerm} 
-                onChange={(e) => setSearchTerm(e.target.value)} 
-              />
-              <div className="max-h-[300px] overflow-y-auto no-scrollbar space-y-1">
-                {filteredCountries.map(c => (
-                  <button 
-                    key={c.id} 
-                    onClick={() => { setSelectedCountry(c.id); setShowCountryFilter(false); handleNext(); }} 
-                    className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all ${selectedCountry === c.id ? 'bg-blue-600/20 text-blue-500' : 'hover:bg-white/5 text-zinc-400'}`}
-                  >
-                    <div className="flex items-center gap-3"><span>{c.flag}</span> <span className="text-sm">{c.name}</span></div>
-                    {selectedCountry === c.id && <Check size={16}/>}
-                  </button>
-                ))}
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <div className="fixed inset-0 w-full h-full bg-[#050505] text-white flex flex-col font-sans overflow-hidden select-none" style={{ height: 'var(--vv-height, 100vh)' }}>
+        
+        {/* MODALLAR */}
+        {showCountryFilter && (
+          <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            <div className="bg-[#121214] border border-white/10 w-full max-w-sm rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95">
+              <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                <h3 className="text-blue-500 font-bold uppercase text-xs tracking-widest">Region Selection</h3>
+                <button onClick={() => setShowCountryFilter(false)}><X size={20}/></button>
+              </div>
+              <div className="p-4">
+                <input 
+                  type="text" 
+                  placeholder="Search country..." 
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 mb-4 outline-none text-xs focus:ring-1 ring-blue-500" 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                />
+                <div className="max-h-[300px] overflow-y-auto no-scrollbar space-y-1">
+                  {filteredCountries.map(c => (
+                    <button 
+                      key={c.id} 
+                      onClick={() => { setSelectedCountry(c.id); setShowCountryFilter(false); handleNext(); }} 
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all ${selectedCountry === c.id ? 'bg-blue-600/20 text-blue-500' : 'hover:bg-white/5 text-zinc-400'}`}
+                    >
+                      <div className="flex items-center gap-3"><span>{c.flag}</span> <span className="text-sm">{c.name}</span></div>
+                      {selectedCountry === c.id && <Check size={16}/>}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Cinsiyet Filtresi Modalı */}
-      {showGenderFilter && (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
-          <div className="bg-[#121214] border border-white/10 w-full max-w-xs rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95">
-            <div className="flex items-center justify-between mb-6 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-              Gender Filter <button onClick={() => setShowGenderFilter(false)}><X size={20}/></button>
-            </div>
-            {['all', 'female', 'male'].map((opt) => (
-              <button 
-                key={opt} 
-                onClick={() => { setSearchGender(opt); setShowGenderFilter(false); handleNext(); }} 
-                className={`w-full flex items-center justify-between p-5 rounded-2xl mb-1 transition-all ${searchGender === opt ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20' : 'hover:bg-white/5 text-zinc-400'}`}
-              >
-                <span className="text-xs font-bold uppercase tracking-widest">{opt === 'all' ? 'Everyone' : opt + 's'}</span>
-                {searchGender === opt && <div className="w-2 h-2 bg-blue-500 rounded-full"></div>}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Ayarlar (Options) Modalı */}
-      {showOptions && (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
-          <div className="bg-[#121214] border border-white/10 w-full max-w-xs rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95">
-            <div className="flex items-center justify-between mb-8">
-              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Device Settings</span>
-              <button onClick={() => setShowOptions(false)}><X size={20}/></button>
-            </div>
-            <div className="space-y-4">
-              <button onClick={toggleCamera} className={`w-full flex items-center justify-between p-5 rounded-2xl transition-all ${cameraOn ? 'bg-blue-600/10 text-blue-400' : 'bg-red-500/10 text-red-500'}`}>
-                <div className="flex items-center gap-4">{cameraOn ? <Video size={20}/> : <VideoOff size={20}/>} <span className="text-xs font-bold uppercase tracking-widest">Camera</span></div>
-              </button>
-              <button onClick={toggleMic} className={`w-full flex items-center justify-between p-5 rounded-2xl transition-all ${micOn ? 'bg-blue-600/10 text-blue-400' : 'bg-red-500/10 text-red-500'}`}>
-                <div className="flex items-center gap-4">{micOn ? <Mic size={20}/> : <MicOff size={20}/>} <span className="text-xs font-bold uppercase tracking-widest">Microphone</span></div>
-              </button>
-              <button onClick={() => { startMedia(facingMode === "user" ? "environment" : "user"); setFacingMode(facingMode === "user" ? "environment" : "user"); setShowOptions(false); }} className="w-full flex items-center gap-4 p-5 rounded-2xl hover:bg-white/5 text-zinc-400">
-                <RefreshCw size={20}/> <span className="text-xs font-bold uppercase tracking-widest">Switch Camera</span>
-              </button>
+        {showGenderFilter && (
+          <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
+            <div className="bg-[#121214] border border-white/10 w-full max-w-xs rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95">
+              <div className="flex items-center justify-between mb-6 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+                Gender Filter <button onClick={() => setShowGenderFilter(false)}><X size={20}/></button>
+              </div>
+              {['all', 'female', 'male'].map((opt) => (
+                <button 
+                  key={opt} 
+                  onClick={() => { setSearchGender(opt); setShowGenderFilter(false); handleNext(); }} 
+                  className={`w-full flex items-center justify-between p-5 rounded-2xl mb-1 transition-all ${searchGender === opt ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20' : 'hover:bg-white/5 text-zinc-400'}`}
+                >
+                  <span className="text-xs font-bold uppercase tracking-widest">{opt === 'all' ? 'Everyone' : opt + 's'}</span>
+                  {searchGender === opt && <div className="w-2 h-2 bg-blue-500 rounded-full"></div>}
+                </button>
+              ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        <div className="flex-1 relative md:max-w-[50%] h-full bg-black">
-          
-          {/* ÜST VİDEO (Remote) */}
-          <div className="absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5">
-            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+        {showOptions && (
+          <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
+            <div className="bg-[#121214] border border-white/10 w-full max-w-xs rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95">
+              <div className="flex items-center justify-between mb-8">
+                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Device Settings</span>
+                <button onClick={() => setShowOptions(false)}><X size={20}/></button>
+              </div>
+              <div className="space-y-4">
+                <button onClick={toggleCamera} className={`w-full flex items-center justify-between p-5 rounded-2xl transition-all ${cameraOn ? 'bg-blue-600/10 text-blue-400' : 'bg-red-500/10 text-red-500'}`}>
+                  <div className="flex items-center gap-4">{cameraOn ? <Video size={20}/> : <VideoOff size={20}/>} <span className="text-xs font-bold uppercase tracking-widest">Camera</span></div>
+                </button>
+                <button onClick={toggleMic} className={`w-full flex items-center justify-between p-5 rounded-2xl transition-all ${micOn ? 'bg-blue-600/10 text-blue-400' : 'bg-red-500/10 text-red-500'}`}>
+                  <div className="flex items-center gap-4">{micOn ? <Mic size={20}/> : <MicOff size={20}/>} <span className="text-xs font-bold uppercase tracking-widest">Microphone</span></div>
+                </button>
+                <button onClick={() => { startMedia(facingMode === "user" ? "environment" : "user"); setFacingMode(facingMode === "user" ? "environment" : "user"); setShowOptions(false); }} className="w-full flex items-center gap-4 p-5 rounded-2xl hover:bg-white/5 text-zinc-400">
+                  <RefreshCw size={20}/> <span className="text-xs font-bold uppercase tracking-widest">Switch Camera</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+          <div className="flex-1 relative md:max-w-[50%] h-full bg-black">
             
-            {/* ETİKET (STRANGER INFO) */}
-            {!isSearching && isActive && partnerId && (
-              <div className="absolute top-6 left-6 z-[60] animate-in slide-in-from-left-8">
-                <div className="flex items-center gap-3 bg-black/40 backdrop-blur-2xl border border-white/10 pl-1.5 pr-4 py-1.5 rounded-full shadow-2xl">
-                   <div className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full text-2xl">{partnerFlag}</div>
-                   <div className="flex flex-col">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
-                        <span className="text-[11px] font-black text-white uppercase leading-none">{partnerCountry}</span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Live</span>
-                        {/* YENİ: Beğeni Puanı Göstergesi */}
-                        <div className="flex items-center gap-1 bg-pink-500/10 px-1.5 py-0.5 rounded-md">
-                          <Heart size={8} className="text-pink-500 fill-pink-500" />
-                          <span className="text-[9px] font-black text-pink-500">{partnerLikes}</span>
+            <div className="absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5">
+              <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+              
+              {!isSearching && isActive && partnerId && (
+                <div className="absolute top-6 left-6 z-[60] animate-in slide-in-from-left-8">
+                  <div className="flex items-center gap-3 bg-black/40 backdrop-blur-2xl border border-white/10 pl-1.5 pr-4 py-1.5 rounded-full shadow-2xl">
+                    <div className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full text-2xl">{partnerFlag}</div>
+                    <div className="flex flex-col">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+                          <span className="text-[11px] font-black text-white uppercase leading-none">{partnerCountry}</span>
                         </div>
-                      </div>
-                   </div>
-                   <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
-                   <div className={`flex items-center justify-center w-9 h-9 rounded-xl ${partnerGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                      <span className="text-xl font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
-                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* YENİ: Ekranda Uçuşan Kalp/Rapor Butonları (Remote Video Üzerinde) */}
-            {!isSearching && isActive && partnerId && (
-              <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-[70]">
-                <button 
-                  onClick={handleReport}
-                  className="w-12 h-12 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center text-zinc-400 hover:text-red-500 transition-all active:scale-90"
-                >
-                  <ShieldAlert size={24} />
-                </button>
-                <button 
-                  onClick={handleLike}
-                  className="w-14 h-14 bg-pink-600/20 backdrop-blur-2xl border border-pink-500/30 rounded-full flex items-center justify-center text-pink-500 shadow-2xl shadow-pink-500/20 active:scale-90 transition-all group"
-                >
-                  <Heart size={28} className="group-hover:fill-pink-500 transition-all" />
-                </button>
-              </div>
-            )}
-
-            {!isActive && !showModal && (
-              <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-xl">
-                <button onClick={toggleActive} className="bg-blue-600 text-white px-10 py-5 rounded-[24px] font-black uppercase text-xs flex items-center gap-3 active:scale-95 transition-transform"><Play size={20} fill="currentColor"/> Start Chat</button>
-              </div>
-            )}
-            {isSearching && isActive && (
-              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md text-center">
-                <div className="w-10 h-10 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-4"></div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-blue-400">Searching...</p>
-              </div>
-            )}
-            <div className="absolute top-6 right-6 z-50"><h1 className="text-xl font-black italic text-blue-500 tracking-tighter">OMEGPT</h1></div>
-          </div>
-
-          {/* ALT VİDEO (Local) */}
-          <div className="absolute bottom-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900">
-            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
-            
-            {!showModal && (
-              <div className="absolute right-6 top-6 flex flex-col gap-4 z-[80]">
-                <button onClick={() => setShowOptions(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Settings size={26}/></button>
-                <button onClick={() => setShowGenderFilter(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><User size={26}/></button>
-                <button onClick={() => setShowCountryFilter(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Globe size={26}/></button>
-              </div>
-            )}
-
-            {/* MOBİL MESAJLAR */}
-            <div className="md:hidden absolute bottom-28 left-6 right-20 z-40 flex flex-col justify-end max-h-[180px] overflow-y-auto no-scrollbar pointer-events-none">
-                {messages.map((m, i) => (
-                    <div key={i} className={`px-3 py-1.5 rounded-xl text-[10px] mb-1.5 w-fit max-w-[90%] backdrop-blur-md border border-white/10 ${m.sender === "Me" ? "bg-blue-600/70 text-white" : "bg-zinc-800/80 text-zinc-200"}`}>
-                        <span className="font-bold opacity-40 mr-1 text-[8px] uppercase">{m.sender}</span>
-                        <p className="inline leading-tight">{m.text}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Live</span>
+                          <div className="flex items-center gap-1 bg-pink-500/10 px-1.5 py-0.5 rounded-md">
+                            <Heart size={8} className="text-pink-500 fill-pink-500" />
+                            <span className="text-[9px] font-black text-pink-500">{partnerLikes}</span>
+                          </div>
+                        </div>
                     </div>
-                ))}
-                <div ref={mobileChatEndRef} />
-            </div>
-
-            {/* KONTROL BAR */}
-            {!showModal && (
-              <div className="md:hidden absolute bottom-6 left-1/2 -translate-x-1/2 w-[92%] h-16 bg-white/5 backdrop-blur-3xl border border-white/10 rounded-[28px] flex items-center justify-between px-6 z-[100] shadow-2xl">
-                <button onClick={toggleActive} className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all active:scale-90 ${isActive ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}>
-                  {isActive ? <Square size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
-                </button>
-                <button onClick={() => handleNext()} disabled={!isActive} className="bg-blue-600 text-white px-7 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest disabled:opacity-30 flex items-center gap-2 active:scale-95 transition-all shadow-xl shadow-blue-500/20"><SkipForward size={14} fill="currentColor" /> Next</button>
-                <button onClick={() => setIsMobileInputActive(!isMobileInputActive)} disabled={!isActive || !partnerId} className={`w-11 h-11 rounded-2xl flex items-center justify-center active:scale-90 ${isMobileInputActive ? 'bg-zinc-700' : 'bg-white/10'}`}><MessageCircle size={20} /></button>
-              </div>
-            )}
-
-            {isMobileInputActive && isActive && (
-              <div className="md:hidden absolute bottom-24 left-6 right-6 z-[110] animate-in slide-in-from-bottom-2 duration-200">
-                <form onSubmit={sendMessage} className="flex bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 p-1.5 rounded-2xl shadow-2xl">
-                  <input autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Type a message..." className="flex-1 bg-transparent px-4 py-2 text-xs outline-none text-white w-full" />
-                  <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-xl flex items-center justify-center active:scale-95"><SkipForward size={18} className="rotate-[-90deg]" /></button>
-                </form>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* WEB CHAT AREA */}
-        <div className="hidden md:flex flex-1 flex-col bg-[#080808] border-l border-white/5 relative z-20">
-          <div className="p-6 border-b border-white/5 flex items-center justify-between font-black text-zinc-500 uppercase tracking-[0.3em] text-[10px]">Interaction Area
-             {!showModal && (
-                <button onClick={toggleActive} className={`flex items-center gap-2 px-4 py-2 rounded-full text-[9px] transition-all ${isActive ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-green-500/10 text-green-500 border border-green-500/20'}`}>
-                    {isActive ? <Square size={10} fill="currentColor"/> : <Play size={10} fill="currentColor"/>} {isActive ? 'Stop' : 'Start'}
-                </button>
-             )}
-          </div>
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
-            {messages.map((msg, idx) => (
-              <div key={idx} className={`flex flex-col ${msg.sender === "Me" ? "items-end" : "items-start"}`}>
-                <div className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-[11px] leading-relaxed ${msg.sender === "Me" ? "bg-blue-600 text-white" : "bg-zinc-800/60 border border-white/5 text-zinc-100"}`}>
-                  <span className="text-[8px] font-black opacity-30 block mb-0.5 uppercase tracking-tighter">{msg.sender}</span> {msg.text}
+                    <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
+                    <div className={`flex items-center justify-center w-9 h-9 rounded-xl ${partnerGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                        <span className="text-xl font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
-            <div ref={chatEndRef} />
-          </div>
-          <div className="p-6 bg-zinc-950/50 border-t border-white/5 flex gap-4">
-            <button onClick={() => handleNext()} disabled={!isActive} className="h-12 px-6 rounded-2xl bg-zinc-100 text-black font-black uppercase text-xs active:scale-95 transition-all">Next</button>
-            <form onSubmit={sendMessage} className="flex-1 flex gap-2">
-              <input value={inputText} onChange={(e) => setInputText(e.target.value)} disabled={!isActive} className="flex-1 bg-white/5 border border-white/10 p-3 rounded-2xl text-white outline-none text-xs focus:ring-1 ring-blue-500" placeholder="Type message..." />
-              <button type="submit" disabled={!isActive} className="h-12 w-12 flex items-center justify-center rounded-2xl bg-blue-600 text-white active:scale-95 transition-all"><SkipForward size={18} className="rotate-[-90deg]"/></button>
-            </form>
-          </div>
-        </div>
-      </main>
+              )}
 
-      {/* LOGIN SCREEN */}
-      {showModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/85 backdrop-blur-2xl">
-            <div className="relative max-w-sm w-full bg-[#111113] border border-white/10 p-10 rounded-[48px] text-center space-y-10 shadow-2xl">
-                <div className="space-y-3">
-                  <h2 className="text-5xl font-black italic tracking-tighter text-blue-500 uppercase drop-shadow-2xl">OMEGPT</h2>
-                  <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-[0.4em]">Premium Network</p>
-                </div>
-                
-                {/* YENİ: Kayıt Olmaya Teşvik ve Google Login Placeholder */}
-                <div className="bg-white/5 p-6 rounded-3xl border border-white/10">
-                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-4 leading-relaxed">
-                    Login to collect <span className="text-pink-500">hearts</span> and build your reputation.
-                  </p>
-                  {/* Buraya handleGoogleSuccess fonksiyonunla çalışan butonu ekleyeceksin */}
-                  <button 
-                    onClick={() => alert("Google Login logic will be here!")}
-                    className="w-full bg-white text-black py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-zinc-200 transition-all"
-                  >
-                    Login with Google
+              {!isSearching && isActive && partnerId && (
+                <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-[70]">
+                  <button onClick={handleReport} className="w-12 h-12 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center text-zinc-400 hover:text-red-500 transition-all active:scale-90">
+                    <ShieldAlert size={24} />
+                  </button>
+                  <button onClick={handleLike} className="w-14 h-14 bg-pink-600/20 backdrop-blur-2xl border border-pink-500/30 rounded-full flex items-center justify-center text-pink-500 shadow-2xl shadow-pink-500/20 active:scale-90 transition-all group">
+                    <Heart size={28} className="group-hover:fill-pink-500 transition-all" />
                   </button>
                 </div>
+              )}
 
-                <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => setMyGender("male")} className={`flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "male" ? "bg-blue-600/10 border-blue-500 text-blue-500 shadow-lg shadow-blue-500/20" : "bg-black/20 border-white/5 text-zinc-500"}`}>
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${myGender === "male" ? "bg-blue-500 text-white" : "bg-zinc-800"}`}>♂</div>
-                        <span className="text-[10px] uppercase font-black">Male</span>
-                    </button>
-                    <button onClick={() => setMyGender("female")} className={`flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "female" ? "bg-pink-600/10 border-pink-500 text-pink-500 shadow-lg shadow-pink-500/20" : "bg-black/20 border-white/5 text-zinc-500"}`}>
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${myGender === "female" ? "bg-pink-500 text-white" : "bg-zinc-800"}`}>♀</div>
-                        <span className="text-[10px] uppercase font-black">Female</span>
-                    </button>
+              {!isActive && !showModal && (
+                <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-xl">
+                  <button onClick={toggleActive} className="bg-blue-600 text-white px-10 py-5 rounded-[24px] font-black uppercase text-xs flex items-center gap-3 active:scale-95 transition-transform"><Play size={20} fill="currentColor"/> Start Chat</button>
                 </div>
-                <button onClick={() => { if(!myGender) return alert("Select gender!"); setShowModal(false); setIsActive(true); handleNext(); }} className="w-full bg-zinc-100 text-black py-5 rounded-[24px] font-black text-lg hover:bg-blue-600 hover:text-white transition-all active:scale-95">LET'S GO 🚀</button>
+              )}
+              {isSearching && isActive && (
+                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md text-center">
+                  <div className="w-10 h-10 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-400">Searching...</p>
+                </div>
+              )}
+              <div className="absolute top-6 right-6 z-50"><h1 className="text-xl font-black italic text-blue-500 tracking-tighter">OMEGPT</h1></div>
             </div>
-        </div>
-      )}
 
-      {/* Giriş Modalındaki Login Bölümü */}
-    <div className="bg-white/5 p-6 rounded-3xl border border-white/10 mb-6">
-      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-4 leading-relaxed text-center">
-        Login to collect <span className="text-pink-500">hearts</span> ❤️
-      </p>
-      
-      <div className="flex justify-center">
-        <GoogleLogin
-          onSuccess={async (credentialResponse) => {
-            const res = await fetch("https://videochat-1qxi.onrender.com/api/auth/social-login", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ token: credentialResponse.credential }) 
-            });
-            const userData = await res.json();
-            setDbUserId(userData._id);
-            localStorage.setItem("dbUserId", userData._id);
-            alert("Login successful! Now you can earn hearts.");
-          }}
-          onError={() => console.log('Login Failed')}
-          useOneTap
-          theme="filled_black"
-          shape="pill"
-        />
+            <div className="absolute bottom-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900">
+              <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
+              
+              {!showModal && (
+                <div className="absolute right-6 top-6 flex flex-col gap-4 z-[80]">
+                  <button onClick={() => setShowOptions(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Settings size={26}/></button>
+                  <button onClick={() => setShowGenderFilter(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><User size={26}/></button>
+                  <button onClick={() => setShowCountryFilter(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Globe size={26}/></button>
+                </div>
+              )}
+
+              <div className="md:hidden absolute bottom-28 left-6 right-20 z-40 flex flex-col justify-end max-h-[180px] overflow-y-auto no-scrollbar pointer-events-none">
+                  {messages.map((m, i) => (
+                      <div key={i} className={`px-3 py-1.5 rounded-xl text-[10px] mb-1.5 w-fit max-w-[90%] backdrop-blur-md border border-white/10 ${m.sender === "Me" ? "bg-blue-600/70 text-white" : "bg-zinc-800/80 text-zinc-200"}`}>
+                          <span className="font-bold opacity-40 mr-1 text-[8px] uppercase">{m.sender}</span>
+                          <p className="inline leading-tight">{m.text}</p>
+                      </div>
+                  ))}
+                  <div ref={mobileChatEndRef} />
+              </div>
+
+              {!showModal && (
+                <div className="md:hidden absolute bottom-6 left-1/2 -translate-x-1/2 w-[92%] h-16 bg-white/5 backdrop-blur-3xl border border-white/10 rounded-[28px] flex items-center justify-between px-6 z-[100] shadow-2xl">
+                  <button onClick={toggleActive} className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all active:scale-90 ${isActive ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}>
+                    {isActive ? <Square size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
+                  </button>
+                  <button onClick={() => handleNext()} disabled={!isActive} className="bg-blue-600 text-white px-7 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest disabled:opacity-30 flex items-center gap-2 active:scale-95 transition-all shadow-xl shadow-blue-500/20"><SkipForward size={14} fill="currentColor" /> Next</button>
+                  <button onClick={() => setIsMobileInputActive(!isMobileInputActive)} disabled={!isActive || !partnerId} className={`w-11 h-11 rounded-2xl flex items-center justify-center active:scale-90 ${isMobileInputActive ? 'bg-zinc-700' : 'bg-white/10'}`}><MessageCircle size={20} /></button>
+                </div>
+              )}
+
+              {isMobileInputActive && isActive && (
+                <div className="md:hidden absolute bottom-24 left-6 right-6 z-[110] animate-in slide-in-from-bottom-2 duration-200">
+                  <form onSubmit={sendMessage} className="flex bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 p-1.5 rounded-2xl shadow-2xl">
+                    <input autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Type a message..." className="flex-1 bg-transparent px-4 py-2 text-xs outline-none text-white w-full" />
+                    <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-xl flex items-center justify-center active:scale-95"><SkipForward size={18} className="rotate-[-90deg]" /></button>
+                  </form>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="hidden md:flex flex-1 flex-col bg-[#080808] border-l border-white/5 relative z-20">
+            <div className="p-6 border-b border-white/5 flex items-center justify-between font-black text-zinc-500 uppercase tracking-[0.3em] text-[10px]">Interaction Area
+              {!showModal && (
+                  <button onClick={toggleActive} className={`flex items-center gap-2 px-4 py-2 rounded-full text-[9px] transition-all ${isActive ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-green-500/10 text-green-500 border border-green-500/20'}`}>
+                      {isActive ? <Square size={10} fill="currentColor"/> : <Play size={10} fill="currentColor"/>} {isActive ? 'Stop' : 'Start'}
+                  </button>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`flex flex-col ${msg.sender === "Me" ? "items-end" : "items-start"}`}>
+                  <div className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-[11px] leading-relaxed ${msg.sender === "Me" ? "bg-blue-600 text-white" : "bg-zinc-800/60 border border-white/5 text-zinc-100"}`}>
+                    <span className="text-[8px] font-black opacity-30 block mb-0.5 uppercase tracking-tighter">{msg.sender}</span> {msg.text}
+                  </div>
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+            <div className="p-6 bg-zinc-950/50 border-t border-white/5 flex gap-4">
+              <button onClick={() => handleNext()} disabled={!isActive} className="h-12 px-6 rounded-2xl bg-zinc-100 text-black font-black uppercase text-xs active:scale-95 transition-all">Next</button>
+              <form onSubmit={sendMessage} className="flex-1 flex gap-2">
+                <input value={inputText} onChange={(e) => setInputText(e.target.value)} disabled={!isActive} className="flex-1 bg-white/5 border border-white/10 p-3 rounded-2xl text-white outline-none text-xs focus:ring-1 ring-blue-500" placeholder="Type message..." />
+                <button type="submit" disabled={!isActive} className="h-12 w-12 flex items-center justify-center rounded-2xl bg-blue-600 text-white active:scale-95 transition-all"><SkipForward size={18} className="rotate-[-90deg]"/></button>
+              </form>
+            </div>
+          </div>
+        </main>
+
+        {showModal && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/85 backdrop-blur-2xl">
+              <div className="relative max-w-sm w-full bg-[#111113] border border-white/10 p-10 rounded-[48px] text-center space-y-10 shadow-2xl">
+                  <div className="space-y-3">
+                    <h2 className="text-5xl font-black italic tracking-tighter text-blue-500 uppercase drop-shadow-2xl">OMEGPT</h2>
+                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-[0.4em]">Premium Network</p>
+                  </div>
+                  
+                  <div className="bg-white/5 p-6 rounded-3xl border border-white/10 mb-6">
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-4 leading-relaxed text-center">
+                      Login to collect <span className="text-pink-500">hearts</span> ❤️
+                    </p>
+                    <div className="flex justify-center">
+                      <GoogleLogin
+                        onSuccess={async (credentialResponse) => {
+                          const res = await fetch("https://videochat-1qxi.onrender.com/api/auth/social-login", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ token: credentialResponse.credential }) 
+                          });
+                          const userData = await res.json();
+                          setDbUserId(userData._id);
+                          localStorage.setItem("dbUserId", userData._id);
+                          alert("Login successful!");
+                        }}
+                        onError={() => console.log('Login Failed')}
+                        theme="filled_black"
+                        shape="pill"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                      <button onClick={() => setMyGender("male")} className={`flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "male" ? "bg-blue-600/10 border-blue-500 text-blue-500 shadow-lg shadow-blue-500/20" : "bg-black/20 border-white/5 text-zinc-500"}`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${myGender === "male" ? "bg-blue-500 text-white" : "bg-zinc-800"}`}>♂</div>
+                          <span className="text-[10px] uppercase font-black">Male</span>
+                      </button>
+                      <button onClick={() => setMyGender("female")} className={`flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "female" ? "bg-pink-600/10 border-pink-500 text-pink-500 shadow-lg shadow-pink-500/20" : "bg-black/20 border-white/5 text-zinc-500"}`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${myGender === "female" ? "bg-pink-500 text-white" : "bg-zinc-800"}`}>♀</div>
+                          <span className="text-[10px] uppercase font-black">Female</span>
+                      </button>
+                  </div>
+                  <button onClick={() => { if(!myGender) return alert("Select gender!"); setShowModal(false); setIsActive(true); handleNext(); }} className="w-full bg-zinc-100 text-black py-5 rounded-[24px] font-black text-lg hover:bg-blue-600 hover:text-white transition-all active:scale-95">LET'S GO 🚀</button>
+              </div>
+          </div>
+        )}
+
+        <style jsx global>{`
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');
+          html, body { font-family: 'Inter', sans-serif; background: #000; color: white; overflow: hidden; }
+          .no-scrollbar::-webkit-scrollbar { display: none; }
+          @keyframes swipe-left { 0%, 100% { transform: translateX(0); opacity: 0.8; } 50% { transform: translateX(-15px); opacity: 1; } }
+          .animate-swipe-left { animation: swipe-left 1.5s infinite ease-in-out; }
+        `}</style>
       </div>
-    </div>
-
-      <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');
-        html, body { font-family: 'Inter', sans-serif; background: #000; color: white; overflow: hidden; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        @keyframes swipe-left { 0%, 100% { transform: translateX(0); opacity: 0.8; } 50% { transform: translateX(-15px); opacity: 1; } }
-        .animate-swipe-left { animation: swipe-left 1.5s infinite ease-in-out; }
-      `}</style>
-    </div>
+    </GoogleOAuthProvider>
   );
 }
