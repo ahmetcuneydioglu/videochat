@@ -39,7 +39,6 @@ const matchTimes = new Map();
 const userDetails = new Map();
 
 io.on('connection', async (socket) => {
-  // IP YAKALAMA VE RENDER PROXY DÜZELTMESİ
   let userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
   if (userIP.includes(',')) userIP = userIP.split(',')[0].trim();
   if (userIP === '::1' || userIP === '127.0.0.1') userIP = '176.234.224.0';
@@ -55,34 +54,28 @@ io.on('connection', async (socket) => {
     skips: 0,
     reports: 0,
     status: 'IDLE',
-    currentPartner: null
+    currentPartner: null,
+    myGender: 'male' // Varsayılan
   });
 
   const isBanned = await Ban.findOne({ ip: userIP });
   if (isBanned) return socket.disconnect();
 
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
-    // 1. Önceki kuyruğu temizle
     globalQueue = globalQueue.filter(item => item.id !== socket.id);
 
     const u = userDetails.get(socket.id);
     if (u) {
         u.skips += 1;
         u.status = 'SEARCHING';
-    }
-
-    if (activeMatches.has(socket.id)) {
-        const duration = Math.floor((Date.now() - (matchTimes.get(socket.id) || Date.now())) / 1000);
-        new Log({ userId: socket.id, userIP, action: 'SKIPPED', duration }).save();
+        u.myGender = myGender; // Cinsiyeti güncelle
     }
 
     const tryMatch = () => {
       const partnerIndex = globalQueue.findIndex(p => {
         const genderMatch = (searchGender === 'all' || searchGender === p.myGender) && 
-                            (p.searchGender === 'all' || p.searchGender === myGender);
-        
+                            (p.searchGender === 'all' || p.myGender === myGender);
         const countryMatch = (selectedCountry === 'all' || selectedCountry === p.countryCode);
-        
         return genderMatch && countryMatch && p.id !== socket.id;
       });
 
@@ -93,20 +86,24 @@ io.on('connection', async (socket) => {
         activeMatches.set(socket.id, partner.id);
         activeMatches.set(partner.id, socket.id);
         
-        const now = Date.now();
-        matchTimes.set(socket.id, now);
-        matchTimes.set(partner.id, now);
-
         const u1 = userDetails.get(socket.id);
         const u2 = userDetails.get(partner.id);
-        if (u1) { u1.status = 'BUSY'; u1.currentPartner = partner.id; }
-        if (u2) { u2.status = 'BUSY'; u2.currentPartner = socket.id; }
+        if (u1) u1.status = 'BUSY';
+        if (u2) u2.status = 'BUSY';
 
-        // KRİTİK: country bilgisini taze GeoIP verisinden gönderiyoruz
-        io.to(socket.id).emit('partner_found', { partnerId: partner.id, initiator: true, country: partner.countryCode,
-        partnerGender: partner.myGender });
-        io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false, country: countryCode,
-        partnerGender: partner.myGender });
+        // Karşılıklı veri gönderimi
+        io.to(socket.id).emit('partner_found', { 
+            partnerId: partner.id, 
+            initiator: true, 
+            country: partner.countryCode,
+            partnerGender: partner.myGender 
+        });
+        io.to(partner.id).emit('partner_found', { 
+            partnerId: socket.id, 
+            initiator: false, 
+            country: countryCode,
+            partnerGender: myGender 
+        });
         return true;
       }
       return false;
@@ -117,59 +114,23 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // START/STOP İÇİN YENİ: Kuyruktan çıkarma ve eşleşmeyi bitirme
   socket.on('stop_search', () => {
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
     const u = userDetails.get(socket.id);
-    if (u) {
-        u.status = 'IDLE';
-        u.currentPartner = null;
-    }
-    
+    if (u) u.status = 'IDLE';
     const partnerId = activeMatches.get(socket.id);
-    if (partnerId) {
-        io.to(partnerId).emit('partner_disconnected');
-        activeMatches.delete(socket.id);
-        activeMatches.delete(partnerId);
-    }
+    if (partnerId) io.to(partnerId).emit('partner_disconnected');
   });
 
   socket.on('signal', (data) => {
     io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
   });
 
-  socket.on('report_user', async ({ targetId, screenshot }) => {
-    try {
-      const targetProfile = userDetails.get(targetId);
-      new Report({ reporterId: socket.id, reportedId: targetId, reportedIP: targetProfile ? targetProfile.ip : "Bilinmiyor", screenshot }).save();
-      if (targetProfile) targetProfile.reports += 1;
-      new Log({ userId: socket.id, userIP, action: 'REPORTED', targetId }).save();
-    } catch (err) { console.error(err); }
-  });
-
   socket.on('disconnect', () => {
-    const partnerId = activeMatches.get(socket.id);
-    if (partnerId) {
-      const p = userDetails.get(partnerId);
-      if (p) { p.status = 'IDLE'; p.currentPartner = null; }
-      io.to(partnerId).emit('partner_disconnected');
-    }
     userDetails.delete(socket.id);
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
-    activeMatches.delete(socket.id);
-    matchTimes.delete(socket.id);
   });
 });
-
-// ADMIN API ROTALARI
-app.get('/api/admin/active-users', (req, res) => res.json(Array.from(userDetails.values())));
-app.get('/api/admin/stats', async (req, res) => {
-    res.json({ activeUsers: userDetails.size, totalBans: await Ban.countDocuments(), pendingReports: await Report.countDocuments() });
-});
-app.get('/api/reports', async (req, res) => res.json(await Report.find().sort({ date: -1 })));
-app.get('/api/bans', async (req, res) => res.json(await Ban.find().sort({ date: -1 })));
-app.delete('/api/reports/:id', async (req, res) => { await Report.findByIdAndDelete(req.params.id); res.json({ success: true }); });
-app.delete('/api/bans/:ip', async (req, res) => { await Ban.findOneAndDelete({ ip: req.params.ip }); res.json({ success: true }); });
 
 const PORT = process.env.PORT || 5001;
 server.listen(PORT, "0.0.0.0", () => {
