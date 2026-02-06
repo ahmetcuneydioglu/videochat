@@ -9,6 +9,8 @@ import {
   Play, Square, SkipForward, Globe, Check, Heart, ShieldAlert
 } from 'lucide-react';
 
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+
 if (typeof window !== "undefined" && typeof (window as any).global === "undefined") {
   (window as any).global = window;
 }
@@ -19,6 +21,8 @@ const socket = io("https://videochat-1qxi.onrender.com/", {
   secure: true,
   query: typeof window !== "undefined" ? { dbUserId: localStorage.getItem("dbUserId") } : {}
 });
+
+const GOOGLE_CLIENT_ID = "18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com";
 
 export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
@@ -505,6 +509,33 @@ export default function Home() {
             </div>
         </div>
       )}
+
+      {/* Giriş Modalındaki Login Bölümü */}
+    <div className="bg-white/5 p-6 rounded-3xl border border-white/10 mb-6">
+      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-4 leading-relaxed text-center">
+        Login to collect <span className="text-pink-500">hearts</span> ❤️
+      </p>
+      
+      <div className="flex justify-center">
+        <GoogleLogin
+          onSuccess={async (credentialResponse) => {
+            const res = await fetch("https://videochat-1qxi.onrender.com/api/auth/social-login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token: credentialResponse.credential }) 
+            });
+            const userData = await res.json();
+            setDbUserId(userData._id);
+            localStorage.setItem("dbUserId", userData._id);
+            alert("Login successful! Now you can earn hearts.");
+          }}
+          onError={() => console.log('Login Failed')}
+          useOneTap
+          theme="filled_black"
+          shape="pill"
+        />
+      </div>
+    </div>
 
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');

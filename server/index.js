@@ -43,19 +43,34 @@ const Report = mongoose.model('Report', new mongoose.Schema({ reporterId: String
 const Log = mongoose.model('Log', new mongoose.Schema({ userId: String, userIP: String, action: String, targetId: String, duration: Number, date: { type: Date, default: Date.now } }));
 
 // --- API ROTALARI ---
-app.post('/api/auth/social-login', async (req, res) => {
-  const { googleId, email, name, avatar } = req.body;
-  try {
-    let user = await User.findOne({ googleId });
-    if (!user) {
-      user = new User({ googleId, email, name, avatar, isRegistered: true });
-      await user.save();
-    }
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ error: "Giriş hatası" });
-  }
-});
+        const { OAuth2Client } = require('google-auth-library');
+        const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+        app.post('/api/auth/social-login', async (req, res) => {
+        const { token } = req.body;
+        try {
+            const ticket = await client.verifyIdToken({
+                idToken: token,
+                audience: process.env.GOOGLE_CLIENT_ID,
+            });
+            const payload = ticket.getPayload();
+            
+            let user = await User.findOne({ googleId: payload['sub'] });
+            if (!user) {
+            user = new User({ 
+                googleId: payload['sub'], 
+                email: payload['email'], 
+                name: payload['name'], 
+                avatar: payload['picture'],
+                isRegistered: true 
+            });
+            await user.save();
+            }
+            res.json(user);
+        } catch (err) {
+            res.status(500).json({ error: "Auth failed" });
+        }
+        });
 
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"], credentials: true } });
 
