@@ -3,6 +3,12 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { io } from "socket.io-client";
 import Peer from "simple-peer";
 import { countries as rawCountries } from 'countries-list';
+// MODERN İKONLAR (npm install lucide-react gerektirir)
+import { 
+  Video, VideoOff, Mic, MicOff, RefreshCw, 
+  User, Flag, Settings, MessageCircle, X, 
+  Play, Square, SkipForward, Globe, ShieldAlert
+} from 'lucide-react';
 
 if (typeof window !== "undefined" && typeof (window as any).global === "undefined") {
   (window as any).global = window;
@@ -78,14 +84,13 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     mobileChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isMobileInputActive]);
 
   const startMedia = async (mode: "user" | "environment" = facingMode) => {
     try {
-      // Eğer stream zaten varsa ve parçalar durdurulmamışsa tekrar isteme
       if (streamRef.current && streamRef.current.active) return;
-      
       const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode }, audio: true });
       streamRef.current = newStream;
       if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
@@ -165,7 +170,7 @@ export default function Home() {
       setSearchStatus("Searching by preference...");
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
       searchTimerRef.current = setTimeout(() => {
-        setSearchStatus("No matches, broadening search...");
+        setSearchStatus("Broadening search...");
         setTimeout(() => {
           socket.emit("find_partner", { myGender, searchGender: "all", selectedCountry: "all" });
         }, 2000);
@@ -216,35 +221,35 @@ export default function Home() {
 
   return (
     <div 
-      className="fixed inset-0 w-full h-full bg-black text-white flex flex-col font-sans overflow-hidden select-none" 
+      className="fixed inset-0 w-full h-full bg-[#0a0a0a] text-zinc-100 flex flex-col font-sans overflow-hidden select-none" 
       style={{ height: 'var(--vv-height, 100vh)' }}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
     >
-      {/* SWIPE HINT (⬅️) */}
+      {/* SWIPE HINT */}
       {showSwipeHint && !showModal && isActive && partnerId && (
         <div className="md:hidden fixed inset-y-0 right-0 z-[100] pointer-events-none flex items-center pr-10">
            <div className="flex flex-col items-center animate-swipe-left text-blue-500">
             <span className="text-5xl">⬅️</span>
-            <p className="text-[10px] font-bold bg-blue-600 text-white px-2 py-1 rounded mt-2 uppercase">Swipe to Next</p>
+            <p className="text-[10px] font-bold bg-blue-600 text-white px-2 py-1 rounded mt-2 uppercase tracking-tighter">Swipe to Next</p>
           </div>
         </div>
       )}
 
-      {/* MODALLAR */}
+      {/* MODALLAR (Modern Tasarımla Yenilendi) */}
       {showCountryFilter && (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white text-black w-full max-w-sm rounded-2xl shadow-2xl animate-in zoom-in-95">
-            <div className="p-4 border-b flex items-center justify-between">
-              <h3 className="text-blue-500 font-bold">Country Filter</h3>
-              <button onClick={() => setShowCountryFilter(false)} className="text-zinc-400 text-2xl">✕</button>
+        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+          <div className="bg-[#18181b] border border-white/10 w-full max-w-sm rounded-[32px] shadow-2xl animate-in zoom-in-95">
+            <div className="p-6 border-b border-white/5 flex items-center justify-between">
+              <h3 className="text-blue-500 font-bold uppercase tracking-widest text-xs">Country Filter</h3>
+              <button onClick={() => setShowCountryFilter(false)} className="text-zinc-500 hover:text-white"><X size={20}/></button>
             </div>
             <div className="p-4">
-              <input type="text" placeholder="Search country..." className="w-full bg-zinc-100 rounded-full py-2 px-4 mb-4 outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-              <div className="max-h-[350px] overflow-y-auto no-scrollbar space-y-1">
+              <input type="text" placeholder="Search country..." className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 mb-4 outline-none focus:ring-1 ring-blue-500 transition-all" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+              <div className="max-h-[300px] overflow-y-auto no-scrollbar space-y-1">
                 {filteredCountries.map((c) => (
-                  <button key={c.id} onClick={() => { setSelectedCountry(c.id); setShowCountryFilter(false); handleNext(undefined, c.id); }} className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl transition-all">
-                    <div className="flex items-center gap-3"><span>{c.flag}</span><span className={`text-sm font-medium ${selectedCountry === c.id ? 'text-blue-500' : 'text-zinc-700'}`}>{c.name}</span></div>
-                    {selectedCountry === c.id && <span className="text-blue-500 font-bold">✓</span>}
+                  <button key={c.id} onClick={() => { setSelectedCountry(c.id); setShowCountryFilter(false); handleNext(undefined, c.id); }} className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all ${selectedCountry === c.id ? 'bg-blue-600/20 text-blue-500 border border-blue-500/20' : 'hover:bg-white/5 border border-transparent'}`}>
+                    <div className="flex items-center gap-3"><span>{c.flag}</span><span className="text-sm font-medium">{c.name}</span></div>
+                    {selectedCountry === c.id && <div className="w-2 h-2 bg-blue-500 rounded-full"></div>}
                   </button>
                 ))}
               </div>
@@ -253,127 +258,109 @@ export default function Home() {
         </div>
       )}
 
-      {showGenderFilter && (
-          <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
-              <div className="bg-white text-black w-full max-w-xs rounded-lg shadow-2xl animate-in zoom-in-95">
-                  <div className="flex items-center justify-between p-4 border-b text-blue-500 font-bold">Gender Filter <button onClick={() => setShowGenderFilter(false)} className="text-zinc-400 text-2xl">✕</button></div>
-                  <div className="p-2">
-                      {[{ id: 'all', label: 'Everyone', icon: '👤', color: 'text-blue-500' }, { id: 'female', label: 'Females Only', icon: '♀️', color: 'text-pink-500' }, { id: 'male', label: 'Males Only', icon: '♂️', color: 'text-blue-400' }].map((opt) => (
-                          <button key={opt.id} onClick={() => { setSearchGender(opt.id); setShowGenderFilter(false); handleNext(opt.id); }} className="w-full flex items-center justify-between p-3 hover:bg-zinc-50 rounded-xl">
-                              <div className="flex items-center gap-4"><span className={`text-xl ${opt.color}`}>{opt.icon}</span><span className={`text-sm font-medium ${searchGender === opt.id ? 'text-blue-500' : 'text-zinc-600'}`}>{opt.label}</span></div>
-                              {searchGender === opt.id && <span className="text-blue-500 font-bold">✓</span>}
-                          </button>
-                      ))}
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {showOptions && (
-          <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
-              <div className="bg-white text-black w-full max-w-xs rounded-lg shadow-2xl animate-in zoom-in-95">
-                  <div className="flex items-center justify-between p-4 border-b text-blue-500 font-bold">Options <button onClick={() => setShowOptions(false)} className="text-zinc-400 text-2xl">✕</button></div>
-                  <div className="p-2 space-y-1">
-                      <button onClick={() => { startMedia(facingMode === "user" ? "environment" : "user"); setFacingMode(facingMode === "user" ? "environment" : "user"); }} className="w-full flex items-center gap-4 p-3 hover:bg-zinc-100 rounded-lg">
-                          <span className="text-xl">🔄</span> <span className="text-sm font-medium">Switch Camera</span>
-                      </button>
-                      <div className="flex items-center justify-between p-3">
-                          <div className="flex items-center gap-4"><span className="text-xl">📹</span> <span className="text-sm font-medium">Camera</span></div>
-                          <input type="checkbox" checked={cameraOn} onChange={toggleCamera} className="w-10 h-5 bg-zinc-200 rounded-full appearance-none checked:bg-green-500 relative transition-all before:content-[''] before:absolute before:w-4 before:h-4 before:bg-white before:rounded-full before:top-0.5 before:left-0.5 checked:before:left-5 before:transition-all cursor-pointer" />
-                      </div>
-                      <div className="flex items-center justify-between p-3">
-                          <div className="flex items-center gap-4"><span className="text-xl">🎤</span> <span className="text-sm font-medium">Mic</span></div>
-                          <input type="checkbox" checked={micOn} onChange={toggleMic} className="w-10 h-5 bg-zinc-200 rounded-full appearance-none checked:bg-green-500 relative transition-all before:content-[''] before:absolute before:w-4 before:h-4 before:bg-white before:rounded-full before:top-0.5 before:left-0.5 checked:before:left-5 before:transition-all cursor-pointer" />
-                      </div>
-                  </div>
-              </div>
-          </div>
-      )}
-
       {/* MAIN LAYOUT */}
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative w-full h-full">
-        {/* VIDEO AREA */}
-        <div className="flex-1 relative md:max-w-[50%] lg:max-w-[60%] h-full bg-black md:border-r border-zinc-800 z-10">
+        <div className="flex-1 relative md:max-w-[50%] lg:max-w-[60%] h-full bg-black md:border-r border-white/5 z-10">
           
-          <div className={`absolute top-0 left-0 w-full h-[50%] md:h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5 transition-all duration-700 ${showModal ? 'blur-2xl' : ''}`}>
+          {/* ÜST VİDEO */}
+          <div className={`absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5 transition-all duration-700 ${showModal ? 'blur-2xl' : ''}`}>
              <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
              
              {!isActive && !showModal && (
-                <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
-                    <p className="text-sm font-bold text-zinc-400 mb-4 uppercase tracking-widest">Chat Stopped</p>
-                    <button onClick={toggleActive} className="bg-green-600 hover:bg-green-500 text-white px-10 py-4 rounded-full font-black text-xl animate-pulse shadow-[0_0_20px_rgba(22,163,74,0.4)]">START CHAT 🚀</button>
+                <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-xl">
+                    <button onClick={toggleActive} className="group flex items-center gap-3 bg-blue-600 hover:bg-blue-500 text-white px-10 py-5 rounded-[24px] font-black text-lg transition-all active:scale-95 shadow-2xl shadow-blue-500/20 uppercase tracking-widest">
+                        <Play size={24} fill="currentColor"/>
+                        Start Chatting
+                    </button>
                 </div>
              )}
 
              {isSearching && isActive && (
-                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-md">
-                    <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p className="text-[10px] font-black tracking-widest text-white uppercase bg-blue-600 px-4 py-1.5 rounded-full">{searchStatus}</p>
+                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md">
+                    <div className="relative">
+                      <div className="w-12 h-12 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-[10px] font-bold tracking-[0.3em] uppercase text-blue-400">Finding Partner...</p>
                 </div>
              )}
 
              {matchNotification && isActive && (
                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[60] animate-in zoom-in-95 fade-in duration-500">
-                  <div className="bg-blue-600/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-2xl border border-white/20 whitespace-nowrap font-bold text-sm">✨ {matchNotification}</div>
+                  <div className="bg-blue-600/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-2xl border border-white/20 font-bold text-sm tracking-tight">✨ {matchNotification}</div>
                </div>
              )}
 
-             <div className="absolute top-4 left-4 z-50">
-                  <h1 className="text-xl font-black italic text-blue-500 bg-black/30 px-2 py-1 rounded">OMEGPT</h1>
-                  {partnerCountry && isActive && !isSearching && <div className="mt-1 text-[10px] font-bold bg-black/60 px-2 py-1 rounded-full border border-white/10 w-fit">🌍 {partnerCountry}</div>}
+             <div className="absolute top-6 left-6 z-50 flex flex-col gap-2">
+                  <h1 className="text-2xl font-black italic text-blue-500 tracking-tighter drop-shadow-lg">OMEGPT</h1>
+                  {partnerCountry && isActive && !isSearching && (
+                    <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 animate-in slide-in-from-left-4">
+                      <span className="text-xs">🌍</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-100">{partnerCountry}</span>
+                    </div>
+                  )}
               </div>
           </div>
 
-          <div className={`absolute bottom-0 left-0 w-full h-[50%] md:h-[50%] overflow-hidden bg-zinc-900 transition-all duration-700 ${showModal ? 'blur-2xl' : ''}`}>
+          {/* ALT VİDEO */}
+          <div className={`absolute bottom-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 transition-all duration-700 ${showModal ? 'blur-2xl' : ''}`}>
              <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
              
              {!showModal && (
-               <div className="absolute right-4 bottom-24 z-[80] flex flex-col gap-4">
-                  <button onClick={() => setShowOptions(true)} className="w-9 h-9 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-center text-sm">⚙️</button>
-                  <button onClick={() => setShowGenderFilter(true)} className="w-9 h-9 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-center text-sm">🚻</button>
-                  <button onClick={() => setShowCountryFilter(true)} className="w-9 h-9 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-center text-sm">🏳️</button>
+               <div className="absolute right-6 top-6 flex flex-col gap-3 z-[80]">
+                  <button onClick={() => setShowOptions(true)} className="w-10 h-10 bg-white/10 backdrop-blur-lg border border-white/10 rounded-2xl flex items-center justify-center hover:bg-white/20 transition-all active:scale-90"><Settings size={18}/></button>
+                  <button onClick={() => setShowGenderFilter(true)} className="w-10 h-10 bg-white/10 backdrop-blur-lg border border-white/10 rounded-2xl flex items-center justify-center hover:bg-white/20 transition-all active:scale-90"><User size={18}/></button>
+                  <button onClick={() => setShowCountryFilter(true)} className="w-10 h-10 bg-white/10 backdrop-blur-lg border border-white/10 rounded-2xl flex items-center justify-center hover:bg-white/20 transition-all active:scale-90"><Globe size={18}/></button>
                </div>
              )}
 
-             {/* MOBİL MESAJ BALONLARI (SOLDA) */}
-             <div className="md:hidden absolute bottom-24 left-4 right-16 z-40 flex flex-col justify-end max-h-[180px] overflow-y-auto no-scrollbar pointer-events-none">
+             {/* MESAJ BALONLARI (SOLDA VE MODERN) */}
+             <div className="md:hidden absolute bottom-28 left-6 right-20 z-40 flex flex-col justify-end max-h-[160px] overflow-y-auto no-scrollbar pointer-events-none">
                 {messages.map((m, i) => (
-                    <div key={i} className={`bg-black/60 backdrop-blur-lg px-3 py-1.5 rounded-2xl text-[11px] border border-white/5 w-fit max-w-[90%] text-white mb-1.5`}>
-                        <span className="opacity-70 font-bold mr-1">{m.sender}:</span> {m.text}
+                    <div key={i} className={`px-4 py-2 rounded-2xl text-[12px] mb-2 w-fit max-w-full backdrop-blur-md border animate-in slide-in-from-left-2 ${m.sender === "Me" ? "bg-blue-600/80 border-blue-400/20" : "bg-zinc-800/60 border-white/5"}`}>
+                        <span className="font-bold opacity-50 mr-2 text-[10px] uppercase">{m.sender}</span>
+                        <p className="leading-relaxed">{m.text}</p>
                     </div>
                 ))}
                 <div ref={mobileChatEndRef} />
              </div>
 
-             {/* ESTETİK MOBİL KONTROL BAR */}
+             {/* FLOATING CONTROL BAR (MOBİL) */}
              {!showModal && (
-                <div className="md:hidden absolute bottom-0 left-0 right-0 h-16 bg-black/20 backdrop-blur-xl border-t border-white/5 flex items-center justify-between px-8 z-[100]">
-                    {/* SOLDA STOP/START BUTONU */}
-                    <button onClick={toggleActive} className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${isActive ? 'bg-red-500/80' : 'bg-green-500/80 scale-110 animate-pulse'}`}>
-                        <span className="text-sm">{isActive ? '⏹️' : '▶️'}</span>
+                <div className="md:hidden absolute bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md h-16 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[28px] flex items-center justify-between px-6 z-[100] shadow-2xl">
+                    <button onClick={toggleActive} className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all shadow-lg active:scale-90 ${isActive ? 'bg-red-500/20 text-red-500 border border-red-500/20 hover:bg-red-500/30' : 'bg-green-500/20 text-green-500 border border-green-500/20 hover:bg-green-500/30'}`}>
+                        {isActive ? <Square size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
                     </button>
 
-                    <div className="flex-1 px-4 flex justify-center opacity-30 text-[9px] font-bold tracking-[0.2em] uppercase">
-                        {isActive ? "Connected" : "Idle"}
-                    </div>
+                    <button 
+                      onClick={() => handleNext()} 
+                      disabled={!isActive}
+                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white px-6 py-2.5 rounded-2xl font-bold text-xs transition-all active:scale-95 uppercase tracking-widest shadow-xl shadow-blue-500/20"
+                    >
+                      <SkipForward size={16} fill="currentColor" />
+                      <span>Next</span>
+                    </button>
 
-                    {/* SAĞDA MESAJ BUTONU */}
                     <button 
                       onClick={() => setIsMobileInputActive(!isMobileInputActive)} 
                       disabled={!isActive || !partnerId}
-                      className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${isMobileInputActive ? 'bg-zinc-700/80' : (partnerId ? 'bg-blue-600/80' : 'bg-zinc-700/40 opacity-50 cursor-not-allowed')}`}
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all active:scale-90 ${isMobileInputActive ? 'bg-zinc-700 text-white' : 'bg-white/10 text-white hover:bg-white/20'} disabled:opacity-20`}
                     >
-                      <span className="text-lg text-white">💬</span>
+                      <MessageCircle size={20} />
                     </button>
                 </div>
              )}
 
-             {/* MESAJ INPUT (Pop-up) */}
+             {/* MESAJ INPUT POPUP */}
              {isMobileInputActive && isActive && (
-                <div className="md:hidden absolute bottom-20 left-4 right-4 z-[110] animate-in slide-in-from-bottom-2 duration-200">
-                    <form onSubmit={sendMessage} className="flex bg-zinc-900/95 backdrop-blur-md border border-white/10 p-1 rounded-full shadow-2xl">
-                        <input autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Type a message..." className="flex-1 bg-transparent px-4 py-2 text-xs outline-none text-white w-full" />
-                        <button type="submit" className="bg-blue-600 text-white w-9 h-9 rounded-full flex items-center justify-center"> ➤ </button>
+                <div className="md:hidden absolute bottom-24 left-6 right-6 z-[110] animate-in slide-in-from-bottom-4 duration-300">
+                    <form onSubmit={sendMessage} className="flex bg-[#1a1a1a]/90 backdrop-blur-xl border border-white/10 p-1.5 rounded-2xl shadow-2xl">
+                        <input autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Send message..." className="flex-1 bg-transparent px-4 py-2 text-sm outline-none text-white w-full" />
+                        <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-xl flex items-center justify-center hover:bg-blue-500 transition-all"> 
+                           <SkipForward size={18} className="rotate-[-90deg]" />
+                        </button>
                     </form>
                 </div>
              )}
@@ -381,59 +368,87 @@ export default function Home() {
         </div>
 
         {/* CHAT AREA (WEB) */}
-        <div className="hidden md:flex flex-1 flex-col bg-white border-l border-zinc-200 h-full relative z-20">
-          <div className="p-4 border-b bg-zinc-50 flex items-center justify-between font-bold text-zinc-800">
-             Sohbet Alanı
+        <div className="hidden md:flex flex-1 flex-col bg-[#0f0f0f] border-l border-white/5 h-full relative z-20">
+          <div className="p-6 border-b border-white/5 bg-zinc-950/50 flex items-center justify-between font-bold text-zinc-300 tracking-widest text-[10px] uppercase">
+             Live Chat Area
              {!showModal && (
-                <button onClick={toggleActive} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase transition-all shadow-sm ${isActive ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-green-500 hover:bg-green-600 text-white animate-pulse'}`}>
-                    {isActive ? 'Stop Searching' : 'Start Searching'}
+                <button onClick={toggleActive} className={`flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-black uppercase transition-all shadow-sm ${isActive ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-green-500/10 text-green-500 border border-green-500/20'}`}>
+                    {isActive ? <Square size={12} fill="currentColor"/> : <Play size={12} fill="currentColor"/>}
+                    {isActive ? 'Stop' : 'Start'}
                 </button>
              )}
           </div>
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar text-black">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex flex-col ${msg.sender === "Me" ? "items-end" : "items-start"}`}>
-                <div className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm ${msg.sender === "Me" ? "bg-blue-600 text-white" : "bg-zinc-100 text-zinc-800"}`}>
-                  <b>{msg.sender}:</b> {msg.text}
+                <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.sender === "Me" ? "bg-blue-600 text-white shadow-lg shadow-blue-500/10" : "bg-zinc-800/50 border border-white/5 text-zinc-100"}`}>
+                  <span className="text-[10px] font-black opacity-30 block mb-1 uppercase tracking-tighter">{msg.sender}</span>
+                  {msg.text}
                 </div>
               </div>
             ))}
             <div ref={chatEndRef} />
           </div>
-          <div className="p-4 bg-zinc-50 border-t flex items-center gap-3">
-            <button onClick={() => handleNext()} disabled={!isActive} className={`px-6 py-3 rounded-xl font-bold uppercase text-xs transition-all ${isActive ? 'bg-black text-white hover:bg-zinc-800' : 'bg-zinc-300 text-zinc-500 cursor-not-allowed'}`}>Sıradaki</button>
+          <div className="p-6 bg-zinc-950/50 border-t border-white/5 flex items-center gap-4">
+            <button onClick={() => handleNext()} disabled={!isActive} className={`h-12 px-6 rounded-2xl font-black uppercase text-xs tracking-widest transition-all ${isActive ? 'bg-zinc-100 text-black hover:bg-white' : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}`}>Next</button>
             <form onSubmit={sendMessage} className="flex-1 flex gap-2">
-                <input disabled={!isActive} value={inputText} onChange={(e) => setInputText(e.target.value)} className="flex-1 border border-zinc-300 p-3 rounded-xl text-black outline-none focus:ring-2 ring-blue-500/20 disabled:bg-zinc-100" placeholder={isActive ? "Mesaj yaz..." : "Sohbet durduruldu"} />
-                <button disabled={!isActive} type="submit" className={`px-5 rounded-xl font-bold transition-colors ${isActive ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-zinc-300 text-zinc-500'}`}>➤</button>
+                <input disabled={!isActive} value={inputText} onChange={(e) => setInputText(e.target.value)} className="flex-1 bg-white/5 border border-white/10 p-3 rounded-2xl text-white outline-none focus:ring-1 ring-blue-500/50 disabled:opacity-20 transition-all text-sm" placeholder={isActive ? "Type something..." : "Chat stopped"} />
+                <button disabled={!isActive} type="submit" className={`h-12 w-12 flex items-center justify-center rounded-2xl font-bold transition-all ${isActive ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-zinc-800 text-zinc-600'}`}><SkipForward size={18} className="rotate-[-90deg]"/></button>
             </form>
           </div>
         </div>
       </main>
 
-      {/* LOGIN MODAL */}
+      {/* LOGIN MODAL (Giriş Ekranı) */}
       {showModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm text-center">
-            <div className="relative max-w-sm w-full bg-zinc-900 border border-white/20 p-8 rounded-[40px] shadow-2xl space-y-8 animate-in zoom-in-95 duration-500">
-                <h2 className="text-5xl font-black italic tracking-tighter text-blue-500 uppercase">OMEGPT</h2>
-                <div className="space-y-4">
-                  <p className="text-xs font-bold text-white uppercase tracking-wider block">Cinsiyetinizi Seçin</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => setMyGender("male")} className={`py-6 rounded-3xl font-black border-2 transition-all ${myGender === "male" ? "bg-blue-600 border-blue-400 shadow-lg scale-95" : "bg-black/40 border-white/10"}`}>MALE</button>
-                    <button onClick={() => setMyGender("female")} className={`py-6 rounded-3xl font-black border-2 transition-all ${myGender === "female" ? "bg-pink-600 border-pink-400 shadow-lg scale-95" : "bg-black/40 border-white/10"}`}>FEMALE</button>
-                  </div>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-xl">
+            <div className="relative max-w-sm w-full bg-[#18181b] border border-white/10 p-10 rounded-[48px] text-center space-y-10 shadow-2xl shadow-blue-500/5">
+                <div className="space-y-3">
+                  <h2 className="text-5xl font-black italic tracking-tighter text-blue-500 uppercase drop-shadow-2xl">OMEGPT</h2>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.4em]">Premium Network</p>
                 </div>
-                <button onClick={() => { if(!myGender) return alert("Select gender!"); setShowModal(false); setIsActive(true); handleNext(); }} className="w-full bg-white text-black py-5 rounded-[25px] font-black text-lg shadow-2xl transition-transform active:scale-95">START 🚀</button>
+                <div className="grid grid-cols-2 gap-4">
+                    <button onClick={() => setMyGender("male")} className={`flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "male" ? "bg-blue-600/10 border-blue-500 text-blue-500" : "bg-black/20 border-white/5 text-zinc-500"}`}>
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${myGender === "male" ? "bg-blue-500 text-white shadow-lg shadow-blue-500/40" : "bg-zinc-800"}`}>♂</div>
+                        <span className="text-[10px] uppercase tracking-widest font-black">Male</span>
+                    </button>
+                    <button onClick={() => setMyGender("female")} className={`flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "female" ? "bg-pink-600/10 border-pink-500 text-pink-500" : "bg-black/20 border-white/5 text-zinc-500"}`}>
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${myGender === "female" ? "bg-pink-500 text-white shadow-lg shadow-pink-500/40" : "bg-zinc-800"}`}>♀</div>
+                        <span className="text-[10px] uppercase tracking-widest font-black">Female</span>
+                    </button>
+                </div>
+                <button onClick={() => { if(!myGender) return alert("Select gender!"); setShowModal(false); setIsActive(true); handleNext(); }} className="group relative w-full bg-zinc-100 text-black py-5 rounded-[24px] font-black text-lg transition-all hover:bg-blue-600 hover:text-white active:scale-95 shadow-xl">
+                    LET'S GO 🚀
+                </button>
             </div>
         </div>
       )}
 
+      {/* GENDER FILTER MODAL */}
+      {showGenderFilter && (
+          <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md">
+              <div className="bg-[#18181b] border border-white/10 w-full max-w-xs rounded-[32px] p-2 shadow-2xl animate-in zoom-in-95">
+                  <div className="flex items-center justify-between p-6 mb-2 text-zinc-500 font-bold text-[10px] uppercase tracking-[0.2em]">Gender Filter <button onClick={() => setShowGenderFilter(false)}><X size={20}/></button></div>
+                  {['all', 'female', 'male'].map((opt) => (
+                      <button key={opt} onClick={() => { setSearchGender(opt); setShowGenderFilter(false); handleNext(); }} className={`w-full flex items-center justify-between p-5 rounded-2xl mb-1 transition-all ${searchGender === opt ? 'bg-blue-600 text-white' : 'hover:bg-white/5 text-zinc-400'}`}>
+                          <span className="text-sm font-bold uppercase tracking-widest">{opt === 'all' ? 'Everyone' : opt + 's Only'}</span>
+                          {searchGender === opt && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                      </button>
+                  ))}
+              </div>
+          </div>
+      )}
+
       <style jsx global>{`
-        html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden !important; position: fixed; background: black; overscroll-behavior: none; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        html, body { 
+          font-family: 'Inter', sans-serif;
+          background: #000;
+          color: white;
+        }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        @keyframes swipe-left { 0%, 100% { transform: translateX(0); opacity: 0.8; } 50% { transform: translateX(-20px); opacity: 1; } }
+        @keyframes swipe-left { 0%, 100% { transform: translateX(0); opacity: 0.8; } 50% { transform: translateX(-15px); opacity: 1; } }
         .animate-swipe-left { animation: swipe-left 1.5s infinite ease-in-out; }
-        @keyframes bounce-subtle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
-        .animate-bounce-subtle { animation: bounce-subtle 2s infinite ease-in-out; }
       `}</style>
     </div>
   );
