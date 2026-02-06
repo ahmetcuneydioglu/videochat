@@ -23,7 +23,7 @@ export default function Home() {
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
 
-  const [isActive, setIsActive] = useState(false); // Start/Stop kontrolü
+  const [isActive, setIsActive] = useState(false);
   const [showModal, setShowModal] = useState(true);
   const [showOptions, setShowOptions] = useState(false);
   const [showGenderFilter, setShowGenderFilter] = useState(false);
@@ -78,13 +78,14 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     mobileChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isMobileInputActive]);
+  }, [messages]);
 
   const startMedia = async (mode: "user" | "environment" = facingMode) => {
     try {
-      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      // Eğer stream zaten varsa ve parçalar durdurulmamışsa tekrar isteme
+      if (streamRef.current && streamRef.current.active) return;
+      
       const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode }, audio: true });
       streamRef.current = newStream;
       if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
@@ -95,13 +96,12 @@ export default function Home() {
     if (isMounted) startMedia();
 
     socket.on("partner_found", (data) => {
-      if (!isActive) return; // Stop modundaysak eşleşmeyi alma
+      if (!isActive) return;
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
       setSearchStatus("Searching...");
       setMessages([]); 
       setPartnerId(data.partnerId); 
       
-      // Ülke İsmi Çözümleme Fix
       const countryCode = (data.country || "UN").toUpperCase();
       const countryObj = allCountries.find(c => c.id === countryCode);
       const countryName = countryObj ? countryObj.name : "Global";
@@ -230,7 +230,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* MODALLAR (Country, Gender, Options - Mevcut kodunla aynı) */}
+      {/* MODALLAR */}
       {showCountryFilter && (
         <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white text-black w-full max-w-sm rounded-2xl shadow-2xl animate-in zoom-in-95">
@@ -295,11 +295,9 @@ export default function Home() {
         {/* VIDEO AREA */}
         <div className="flex-1 relative md:max-w-[50%] lg:max-w-[60%] h-full bg-black md:border-r border-zinc-800 z-10">
           
-          {/* ÜST VİDEO (Stranger) */}
-          <div className={`absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5 transition-all duration-700 ${showModal ? 'blur-2xl' : ''}`}>
+          <div className={`absolute top-0 left-0 w-full h-[50%] md:h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5 transition-all duration-700 ${showModal ? 'blur-2xl' : ''}`}>
              <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
              
-             {/* STOPPED OVERLAY */}
              {!isActive && !showModal && (
                 <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
                     <p className="text-sm font-bold text-zinc-400 mb-4 uppercase tracking-widest">Chat Stopped</p>
@@ -326,54 +324,56 @@ export default function Home() {
               </div>
           </div>
 
-          {/* ALT VİDEO (Self) */}
-          <div className={`absolute bottom-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 transition-all duration-700 ${showModal ? 'blur-2xl' : ''}`}>
+          <div className={`absolute bottom-0 left-0 w-full h-[50%] md:h-[50%] overflow-hidden bg-zinc-900 transition-all duration-700 ${showModal ? 'blur-2xl' : ''}`}>
              <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
              
-             {/* YAN BUTONLAR (Filtreler) */}
              {!showModal && (
                <div className="absolute right-4 bottom-24 z-[80] flex flex-col gap-4">
-                  <button onClick={() => setShowOptions(true)} className="w-10 h-10 bg-black/50 backdrop-blur-xl border border-white/10 rounded-xl flex items-center justify-center">⚙️</button>
-                  <button onClick={() => setShowGenderFilter(true)} className="w-10 h-10 bg-black/50 backdrop-blur-xl border border-white/10 rounded-xl flex items-center justify-center">🚻</button>
-                  <button onClick={() => setShowCountryFilter(true)} className="w-10 h-10 bg-black/50 backdrop-blur-xl border border-white/10 rounded-xl flex items-center justify-center">🏳️</button>
+                  <button onClick={() => setShowOptions(true)} className="w-9 h-9 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-center text-sm">⚙️</button>
+                  <button onClick={() => setShowGenderFilter(true)} className="w-9 h-9 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-center text-sm">🚻</button>
+                  <button onClick={() => setShowCountryFilter(true)} className="w-9 h-9 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-center text-sm">🏳️</button>
                </div>
              )}
 
-             {/* MOBİL MESAJ BALONLARI */}
-             <div className="md:hidden absolute bottom-24 left-4 right-4 z-40 flex flex-col justify-end max-h-[140px] overflow-y-auto no-scrollbar pointer-events-none">
+             {/* MOBİL MESAJ BALONLARI (SOLDA) */}
+             <div className="md:hidden absolute bottom-24 left-4 right-16 z-40 flex flex-col justify-end max-h-[180px] overflow-y-auto no-scrollbar pointer-events-none">
                 {messages.map((m, i) => (
-                    <div key={i} className={`bg-black/60 backdrop-blur-lg px-3 py-1.5 rounded-2xl text-[12px] border border-white/5 w-fit max-w-[85%] text-white mb-1 ${m.sender === "Me" ? "ml-auto" : ""}`}>
-                        <b>{m.sender}:</b> {m.text}
+                    <div key={i} className={`bg-black/60 backdrop-blur-lg px-3 py-1.5 rounded-2xl text-[11px] border border-white/5 w-fit max-w-[90%] text-white mb-1.5`}>
+                        <span className="opacity-70 font-bold mr-1">{m.sender}:</span> {m.text}
                     </div>
                 ))}
                 <div ref={mobileChatEndRef} />
              </div>
 
-             {/* MOBİL KONTROL BAR (CONTROL BAR) */}
+             {/* ESTETİK MOBİL KONTROL BAR */}
              {!showModal && (
-                <div className="md:hidden absolute bottom-0 left-0 right-0 h-20 bg-black/80 backdrop-blur-2xl border-t border-white/10 flex items-center justify-between px-8 z-[100]">
+                <div className="md:hidden absolute bottom-0 left-0 right-0 h-16 bg-black/20 backdrop-blur-xl border-t border-white/5 flex items-center justify-between px-8 z-[100]">
                     {/* SOLDA STOP/START BUTONU */}
-                    <button onClick={toggleActive} className={`w-14 h-14 rounded-full flex items-center justify-center border-2 border-white/20 transition-all ${isActive ? 'bg-red-600' : 'bg-green-600 scale-110 animate-pulse'}`}>
-                        <span className="text-xl">{isActive ? '⏹️' : '▶️'}</span>
+                    <button onClick={toggleActive} className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${isActive ? 'bg-red-500/80' : 'bg-green-500/80 scale-110 animate-pulse'}`}>
+                        <span className="text-sm">{isActive ? '⏹️' : '▶️'}</span>
                     </button>
+
+                    <div className="flex-1 px-4 flex justify-center opacity-30 text-[9px] font-bold tracking-[0.2em] uppercase">
+                        {isActive ? "Connected" : "Idle"}
+                    </div>
 
                     {/* SAĞDA MESAJ BUTONU */}
                     <button 
                       onClick={() => setIsMobileInputActive(!isMobileInputActive)} 
                       disabled={!isActive || !partnerId}
-                      className={`w-14 h-14 rounded-full flex items-center justify-center border-2 border-white/20 shadow-2xl transition-all ${isMobileInputActive ? 'bg-zinc-800' : (partnerId ? 'bg-blue-600' : 'bg-zinc-700 opacity-50 cursor-not-allowed')}`}
+                      className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${isMobileInputActive ? 'bg-zinc-700/80' : (partnerId ? 'bg-blue-600/80' : 'bg-zinc-700/40 opacity-50 cursor-not-allowed')}`}
                     >
-                      <span className="text-2xl text-white">{isMobileInputActive ? '✕' : '💬'}</span>
+                      <span className="text-lg text-white">💬</span>
                     </button>
                 </div>
              )}
 
              {/* MESAJ INPUT (Pop-up) */}
              {isMobileInputActive && isActive && (
-                <div className="md:hidden absolute bottom-24 left-4 right-4 z-[110] animate-in slide-in-from-bottom-2 duration-200">
-                    <form onSubmit={sendMessage} className="flex bg-zinc-900 border border-white/20 p-1 rounded-full shadow-2xl">
-                        <input autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Type a message..." className="flex-1 bg-transparent px-4 py-2 text-sm outline-none text-white w-full" />
-                        <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center"> ➤ </button>
+                <div className="md:hidden absolute bottom-20 left-4 right-4 z-[110] animate-in slide-in-from-bottom-2 duration-200">
+                    <form onSubmit={sendMessage} className="flex bg-zinc-900/95 backdrop-blur-md border border-white/10 p-1 rounded-full shadow-2xl">
+                        <input autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Type a message..." className="flex-1 bg-transparent px-4 py-2 text-xs outline-none text-white w-full" />
+                        <button type="submit" className="bg-blue-600 text-white w-9 h-9 rounded-full flex items-center justify-center"> ➤ </button>
                     </form>
                 </div>
              )}
