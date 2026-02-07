@@ -476,49 +476,49 @@ const handleLike = () => {
               {/* STRANGER INFO & KENDİ AVATARIN - TAVANA TAM SIFIR */}
             <div className="absolute top-0 left-0 z-[120] flex flex-col gap-0">
               {!isSearching && isActive && partnerId && (
-                <div className="flex items-center gap-3 bg-black/70 backdrop-blur-3xl border-r border-b border-white/10 pl-5 pr-7 py-4 rounded-br-[32px] shadow-2xl animate-in slide-in-from-top-10 duration-500">
+                <div className="flex items-center gap-3 bg-black/70 backdrop-blur-3xl border-r border-b border-white/10 pl-5 pr-7 py-2 rounded-br-[32px] shadow-2xl animate-in slide-in-from-top-10 duration-500">
                   {/* Bayrak */}
-                  <div className="w-12 h-12 flex items-center justify-center bg-white/5 rounded-2xl text-3xl shrink-0">
+                  <div className="w-9 h-9 flex items-center justify-center bg-white/5 rounded-2xl text-xl shrink-0">
                     {partnerFlag}
                   </div>
 
-                  <div className="flex flex-col justify-center gap-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.8)]"></div>
-                      <span className="text-[14px] font-black text-white uppercase tracking-tight leading-none">{partnerCountry}</span>
+                  <div className="flex flex-col justify-center gap-0.5">
+                    <div className="flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.8)]"></div>
+                      <span className="text-[11px] font-black text-white uppercase tracking-tight leading-none">{partnerCountry}</span>
                     </div>
                     
                     {/* KALP SAYACI */}
                     <div 
                       onClick={handleLike}
-                      className="flex items-center gap-2 bg-pink-500/20 px-3 py-1.5 rounded-xl cursor-pointer hover:bg-pink-500/30 transition-all border border-pink-500/10"
+                      className="flex items-center gap-1.5 bg-pink-500/20 px-2 py-0.5 rounded-xl cursor-pointer hover:bg-pink-500/30 transition-all border border-pink-500/10"
                     >
-                      <Heart size={14} className="text-pink-500 fill-pink-500" />
-                      <span className="text-sm font-black text-pink-500 tabular-nums leading-none">
+                      <Heart size={10} className="text-pink-500 fill-pink-500" />
+                      <span className="text-xm font-black text-pink-500 tabular-nums leading-none">
                         {partnerLikes}
                       </span>
                     </div>
                   </div>
 
-                  <div className="h-10 w-[1px] bg-white/10 mx-1"></div>
+                  <div className="h-6 w-[1px] bg-white/10 mx-0.5"></div>
 
                   {/* Cinsiyet */}
-                  <div className={`flex items-center justify-center w-11 h-11 rounded-2xl ${partnerGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                    <span className="text-2xl font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
+                  <div className={`flex items-center justify-center w-8 h-8 rounded-lg ${partnerGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                    <span className="text-lg font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
                   </div>
                 </div>
               )}
 
               {/* KENDİ AVATARIN - KARTIN HEMEN ALTINA VEYA İÇİNE HİZALANDI */}
               {userAvatar && !showModal && (
-                <div className="ml-4 mt-3 flex items-center gap-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1.5 rounded-full w-fit animate-in fade-in slide-in-from-left-4">
+                <div className="ml-3 mt-2 flex items-center gap-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit animate-in fade-in slide-in-from-left-4">
                   <img 
                     src={userAvatar} 
                     alt="You" 
-                    className="w-10 h-10 rounded-full border-2 border-blue-500/40 object-cover" 
+                    className="w-8 h-8 rounded-full border-2 border-blue-500/40 object-cover" 
                     onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${userName}&background=0D8ABC&color=fff`)}
                   />
-                  <span className="text-[11px] font-black pr-4 text-white uppercase tracking-widest">YOU</span>
+                  <span className="text-[9px] font-black pr-3 text-white uppercase tracking-widest">YOU</span>
                 </div>
               )}
             </div>
