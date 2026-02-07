@@ -177,7 +177,7 @@ io.on('connection', async (socket) => {
     }
   });
 
-  socket.on('like_partner', async ({ targetId }) => {
+  socket.on('like_partner', async ({ targetId, increaseCounter }) => {
     const me = userDetails.get(socket.id);
     const partner = userDetails.get(targetId);
 
@@ -185,12 +185,19 @@ io.on('connection', async (socket) => {
     if (!me || !me.isRegistered) return;
 
     if (partner && partner.dbId) {
-      await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
-      partner.likes += 1;
+      // 1. ADIM: Sayaç Artırma (Sadece ilk basışta)
+      if (increaseCounter) {
+        await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
+        partner.likes += 1;
+        // Opsiyonel: Sadece puan arttığında log tutmak istersen buraya alabilirsin
+        new Log({ userId: socket.id, userIP: me.ip, action: 'LIKED', targetId }).save();
+      }
+
+      // 2. ADIM: Animasyon Sinyali (Her zaman)
+      // Partnerin ekranında kalplerin uçması için bu emit her durumda çalışmalı
       io.to(targetId).emit('receive_like', { newLikes: partner.likes });
-      new Log({ userId: socket.id, userIP: me.ip, action: 'LIKED', targetId }).save();
     }
-  });
+});
 
   socket.on('stop_search', () => {
     globalQueue = globalQueue.filter(u => u.id !== socket.id);

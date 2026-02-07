@@ -238,18 +238,18 @@ export default function Home() {
     return;
   }
   
-  // 1. ADIM: Her zaman çalışsın (Görsel şölen)
-  // Bu satır sayesinde her basışta senin ekranında kalpler uçar.
+  // 1. Kendi ekranımızda kalpleri uçur (Her zaman)
   triggerHeartAnimation();
 
   if (partnerId) {
-    // 2. ADIM: Karşı tarafa HER BASIŞTA socket mesajı gönder
-    // Bu sayede partnerin her basışında kendi ekranında kalplerin uçtuğunu görür.
-    socket.emit("like_partner", { targetId: partnerId });
+    // 2. Karşı tarafa sinyali gönder
+    // Sinyal içine 'isFirstTime' bilgisini ekliyoruz
+    socket.emit("like_partner", { 
+      targetId: partnerId, 
+      increaseCounter: !hasLiked // Eğer daha önce beğenmediyse true gider, beğendiyse false
+    });
 
-    // 3. ADIM: Veritabanı sayacı sadece ilk basışta artsın (İsteğe bağlı/Opsiyonel)
-    // Eğer backend tarafında "bir kişi sadece 1 puan verebilir" mantığı varsa 
-    // yukarıdaki emit her çalıştığında görsel uçar ama puan sadece ilkinde artar.
+    // 3. İlk basıştan sonra hakkımızı dolduruyoruz
     if (!hasLiked) {
       setHasLiked(true);
     }
