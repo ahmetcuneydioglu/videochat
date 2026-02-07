@@ -60,8 +60,10 @@ export default function Home() {
   const [matchNotification, setMatchNotification] = useState<string | null>(null);
 
   const [dbUserId, setDbUserId] = useState<string | null>(null);
+
   // YENİ: Kullanıcı ismi için state
   const [userName, setUserName] = useState<string | null>(null);
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
 
   // YENİ: Uçuşan kalpler için state
   const [flyingHearts, setFlyingHearts] = useState<{ id: number; left: number; delay: number }[]>([]);
@@ -494,12 +496,12 @@ export default function Home() {
                     {userName ? (
                       <div className="space-y-2 animate-in fade-in zoom-in-95 duration-500">
                         <p className="text-xs text-zinc-300 font-medium tracking-wide">Hoş geldin,</p>
-                        <h3 className="text-xl font-black text-white uppercase tracking-tight leading-none pb-1">{userName}!</h3>
-                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em] leading-relaxed pt-2 border-t border-white/5">
+                        <h3 className="text-xl font-black text-white uppercase tracking-tight">{userName}!</h3>
+                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em] pt-2 border-t border-white/5">
                           Cinsiyetini seç ve <span className="text-blue-500">sohbete başla</span>
                         </p>
                       </div>
-                    ) : (
+                        ) : (
                       <>
                         <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-4 leading-relaxed text-center">
                           Login to collect <span className="text-pink-500">hearts</span> ❤️
@@ -516,12 +518,14 @@ export default function Home() {
                               
                               setDbUserId(userData._id);
                               setUserName(userData.name); // İsim set edildi
+                              setUserAvatar(userData.avatar); //avatar set edildi
                               localStorage.setItem("dbUserId", userData._id);
                               localStorage.setItem("userName", userData.name); // İsim kaydedildi
-                              
+                              localStorage.setItem("userAvatar", userData.avatar);
+
                               socket.emit("user_logged_in", { dbUserId: userData._id });
                               
-                              alert(`Hoş geldin ${userData.name}!`);
+                              alert(`Welcome ${userData.name}!`);
                             }}
                             onError={() => console.log('Login Failed')}
                             theme="filled_black"
