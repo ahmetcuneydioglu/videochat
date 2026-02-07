@@ -215,7 +215,8 @@ export default function Home() {
   };
 
   // HANDLE LIKE GÜNCELLENDİ: PERISCOPE MANTIĞI
-  const handleLike = () => {
+  //Sadece tek kalp için bu fonksiyon çalışacak
+  /* const handleLike = () => {
     if (!dbUserId) {
       setShowLoginRequired(true);
       return;
@@ -225,11 +226,35 @@ export default function Home() {
     triggerHeartAnimation();
 
     // 2. Sayaç Kontrolü: Sadece ilk basışta veritabanına gider
-    if (partnerId && !hasLiked) {
+    if (partnerId) {
       socket.emit("like_partner", { targetId: partnerId });
       setHasLiked(true); // Hakkını kullandı olarak işaretle
     }
-  };
+  }; */
+
+  const handleLike = () => {
+  if (!dbUserId) {
+    setShowLoginRequired(true);
+    return;
+  }
+  
+  // 1. ADIM: Her zaman çalışsın (Görsel şölen)
+  // Bu satır sayesinde her basışta senin ekranında kalpler uçar.
+  triggerHeartAnimation();
+
+  if (partnerId) {
+    // 2. ADIM: Karşı tarafa HER BASIŞTA socket mesajı gönder
+    // Bu sayede partnerin her basışında kendi ekranında kalplerin uçtuğunu görür.
+    socket.emit("like_partner", { targetId: partnerId });
+
+    // 3. ADIM: Veritabanı sayacı sadece ilk basışta artsın (İsteğe bağlı/Opsiyonel)
+    // Eğer backend tarafında "bir kişi sadece 1 puan verebilir" mantığı varsa 
+    // yukarıdaki emit her çalıştığında görsel uçar ama puan sadece ilkinde artar.
+    if (!hasLiked) {
+      setHasLiked(true);
+    }
+  }
+};
 
   const handleReport = () => {
     if (partnerId) {
