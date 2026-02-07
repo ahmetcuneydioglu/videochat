@@ -205,20 +205,20 @@ socket.on('like_partner', async ({ targetId, increaseCounter }) => {
     const me = userDetails.get(socket.id);
     const partner = userDetails.get(targetId);
 
-    // ARTIK BURADAKİ "if (!me.isRegistered) return;" SATIRINI KALDIRDIK VEYA GÜNCELLEDİK
-    if (!me) return;
+    if (!me || !partner) return; // Partner yoksa işlem yapma
 
-    if (partner && partner.dbId) {
-      // Sadece karşı tarafın dbId'si varsa ve gönderen kayıtlıysa (increaseCounter true gelmişse) sayaç artsın
-      if (increaseCounter && me.isRegistered) {
-        await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
-        partner.likes += 1;
-        new Log({ userId: socket.id, userIP: me.ip, action: 'LIKED', targetId }).save();
-      }
-
-      // Kalpler her durumda uçsun (Misafirler dahil)
-      io.to(targetId).emit('receive_like', { newLikes: partner.likes });
+    // 1. ADIM: Sayaç Artırma (Sadece her iki taraf kayıtlıysa)
+    // Gönderen kayıtlıysa (increaseCounter frontend'den true gelir) 
+    // ve alan kişinin dbId'si varsa puanı artır.
+    if (increaseCounter && me.isRegistered && partner.dbId) {
+      await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
+      partner.likes += 1;
+      new Log({ userId: socket.id, userIP: me.ip, action: 'LIKED', targetId }).save();
     }
+
+    // 2. ADIM: Görsel Efekt (Herkes için)
+    // dbId olsun ya da olmasın, partner mevcutsa kalpleri uçur.
+    io.to(targetId).emit('receive_like', { newLikes: partner.likes });
 });
 
   socket.on('stop_search', () => {

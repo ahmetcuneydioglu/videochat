@@ -259,13 +259,15 @@ export default function Home() {
  */
 
 const handleLike = () => {
-  // triggerHeartAnimation() satırını en başa alıyoruz ki login olsun olmasın herkes görsün
+  // Kendi ekranında her zaman uçur
   triggerHeartAnimation();
 
   if (partnerId) {
+    // Sinyali gönder: 
+    // dbUserId varsa ve daha önce beğenmediyse 'increaseCounter' true gider.
+    // Misafir ise her zaman false gider ama sinyal yine de iletilir.
     socket.emit("like_partner", { 
       targetId: partnerId, 
-      // Sadece login olanların (dbUserId varsa) sayacı artsın
       increaseCounter: dbUserId ? !hasLiked : false 
     });
 
