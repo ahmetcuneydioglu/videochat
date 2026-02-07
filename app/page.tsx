@@ -31,6 +31,7 @@ export default function Home() {
   const mobileChatEndRef = useRef<HTMLDivElement>(null);
   const peerRef = useRef<Peer.Instance | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [isActive, setIsActive] = useState(false);
   const [showModal, setShowModal] = useState(true);
@@ -62,8 +63,12 @@ export default function Home() {
   const [dbUserId, setDbUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  
+  // YENİ: Beğeni Kontrolü
+  const [hasLiked, setHasLiked] = useState(false); 
 
-  const [flyingHearts, setFlyingHearts] = useState<{ id: number; left: number; delay: number }[]>([]);
+  // YENİ: Renkli Kalpler İçin State (Color eklendi)
+  const [flyingHearts, setFlyingHearts] = useState<{ id: number; left: number; delay: number; color: string }[]>([]);
 
   const getFlagEmoji = (countryCode: string) => {
     if (countryCode === "all" || countryCode === "UN") return "🌐";
@@ -113,12 +118,19 @@ export default function Home() {
     } catch (err) { console.error("Media error:", err); }
   };
 
-  // KALP ANİMASYON FONKSİYONU (Tekrar kullanımı için ayrıldı)
+  // YENİ: Rastgele Kalp Rengi Seçici
+  const getRandomHeartColor = () => {
+    const colors = ["text-blue-500", "text-yellow-400", "text-purple-500", "text-pink-500", "text-red-500"];
+    return colors[Math.floor(Math.random() * colors.length)];
+  };
+
+  // KALP ANİMASYON FONKSİYONU
   const triggerHeartAnimation = () => {
     const newHearts = Array.from({ length: 5 }).map((_, i) => ({
       id: Date.now() + i,
       left: Math.random() * 80 + 10,
-      delay: Math.random() * 0.5
+      delay: Math.random() * 0.5,
+      color: getRandomHeartColor() // Renk ataması
     }));
     setFlyingHearts(prev => [...prev, ...newHearts]);
     setTimeout(() => {
@@ -135,6 +147,7 @@ export default function Home() {
         setPartnerId(data.partnerId); 
         setPartnerGender(data.partnerGender || 'male'); 
         setPartnerLikes(data.partnerLikes || 0); 
+        setHasLiked(false); // Yeni partnerde beğeniyi sıfırla
         
         const countryCode = (data.country || "UN").toUpperCase();
         const countryObj = allCountries.find(c => c.id === countryCode);
@@ -150,7 +163,7 @@ export default function Home() {
     socket.on("receive_like", (data) => {
       setPartnerLikes(data.newLikes);
       setMatchNotification("Someone loved your vibe! ❤️");
-      triggerHeartAnimation(); // Animasyon tetikle
+      triggerHeartAnimation(); // Karşı taraf beğendiğinde de renkli kalpler uçuşsun
       setTimeout(() => setMatchNotification(null), 3000);
     });
 
@@ -179,6 +192,7 @@ export default function Home() {
     setPartnerFlag(null);
     setPartnerGender(null);
     setPartnerLikes(0);
+    setHasLiked(false);
   };
 
   function initiatePeer(targetId: string, initiator: boolean) {
@@ -200,18 +214,20 @@ export default function Home() {
     socket.emit("find_partner", { myGender, searchGender, selectedCountry });
   };
 
-  // HANDLE LIKE GÜNCELLENDİ: ARTIK ANİMASYON TETİKLİYOR
+  // HANDLE LIKE GÜNCELLENDİ: PERISCOPE MANTIĞI
   const handleLike = () => {
     if (!dbUserId) {
       setShowLoginRequired(true);
       return;
     }
     
-    // Basar basmaz kendi ekranımızda animasyon oynasın
+    // 1. Görsel Şölen: Her basışta kalpler uçar (Fidget etkisi)
     triggerHeartAnimation();
 
-    if (partnerId) {
+    // 2. Sayaç Kontrolü: Sadece ilk basışta veritabanına gider
+    if (partnerId && !hasLiked) {
       socket.emit("like_partner", { targetId: partnerId });
+      setHasLiked(true); // Hakkını kullandı olarak işaretle
     }
   };
 
@@ -396,13 +412,14 @@ export default function Home() {
             <div className="absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5">
               <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
               
+              {/* YENİ: RENKLİ VE UÇUŞAN KALPLER */}
               {flyingHearts.map((heart) => (
                 <div 
                   key={heart.id} 
                   className="absolute bottom-10 pointer-events-none animate-fly-up-fade z-[100]" 
                   style={{ left: `${heart.left}%`, animationDelay: `${heart.delay}s` }}
                 >
-                  <Heart size={44} className="text-pink-500 fill-pink-500 drop-shadow-[0_0_15px_rgba(236,72,153,0.5)]" />
+                  <Heart size={44} className={`${heart.color} fill-current drop-shadow-[0_0_15px_rgba(255,255,255,0.4)]`} />
                 </div>
               ))}
 
@@ -418,7 +435,7 @@ export default function Home() {
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Live</span>
                           <div 
-                            onClick={handleLike} // YENİ: Sol üstteki küçük kalp de artık beğeni atıyor
+                            onClick={handleLike} 
                             className="flex items-center gap-1 bg-pink-500/10 px-1.5 py-0.5 rounded-md cursor-pointer hover:bg-pink-500/20 transition-colors"
                           >
                             <Heart size={8} className="text-pink-500 fill-pink-500" />
@@ -442,7 +459,6 @@ export default function Home() {
               </div>
 
               {!isSearching && isActive && partnerId && (
-                // DÜZELTME: Butonlar mobilde navigasyonun üzerine binmesin diye bottom-24 yapıldı
                 <div className="absolute bottom-24 md:bottom-6 right-6 flex flex-col gap-3 z-[70]">
                   <button onClick={handleReport} className="w-12 h-12 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center text-zinc-400 hover:text-red-500 transition-all active:scale-90">
                     <ShieldAlert size={24} />
@@ -584,6 +600,12 @@ export default function Home() {
           @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');
           html, body { font-family: 'Inter', sans-serif; background: #000; color: white; overflow: hidden; }
           .no-scrollbar::-webkit-scrollbar { display: none; }
+          @keyframes fly-up-fade {
+            0% { transform: translateY(0) scale(0.8) rotate(0deg); opacity: 0; }
+            10% { opacity: 1; transform: translateY(-20px) scale(1.2) rotate(-10deg); }
+            100% { transform: translateY(-300px) scale(0.5) rotate(20deg); opacity: 0; }
+          }
+          .animate-fly-up-fade { animation: fly-up-fade 2.5s ease-out forwards; }
           @keyframes swipe-left { 0%, 100% { transform: translateX(0); opacity: 0.8; } 50% { transform: translateX(-15px); opacity: 1; } }
           .animate-swipe-left { animation: swipe-left 1.5s infinite ease-in-out; }
         `}</style>
