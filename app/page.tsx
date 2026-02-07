@@ -232,7 +232,8 @@ export default function Home() {
     }
   }; */
 
-  const handleLike = () => {
+  //Aşağdaki kod beğeni içinde login isteyen kod parçacığı
+  /* const handleLike = () => {
   if (!dbUserId) {
     setShowLoginRequired(true);
     return;
@@ -255,6 +256,25 @@ export default function Home() {
     }
   }
 };
+ */
+
+const handleLike = () => {
+  // triggerHeartAnimation() satırını en başa alıyoruz ki login olsun olmasın herkes görsün
+  triggerHeartAnimation();
+
+  if (partnerId) {
+    socket.emit("like_partner", { 
+      targetId: partnerId, 
+      // Sadece login olanların (dbUserId varsa) sayacı artsın
+      increaseCounter: dbUserId ? !hasLiked : false 
+    });
+
+    if (!hasLiked && dbUserId) {
+      setHasLiked(true);
+    }
+  }
+};
+
 
   const handleReport = () => {
     if (partnerId) {

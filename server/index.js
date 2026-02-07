@@ -177,7 +177,8 @@ io.on('connection', async (socket) => {
     }
   });
 
-  socket.on('like_partner', async ({ targetId, increaseCounter }) => {
+  //like yapabilmek için login gerekli olmalı kodu
+  /* socket.on('like_partner', async ({ targetId, increaseCounter }) => {
     const me = userDetails.get(socket.id);
     const partner = userDetails.get(targetId);
 
@@ -195,6 +196,27 @@ io.on('connection', async (socket) => {
 
       // 2. ADIM: Animasyon Sinyali (Her zaman)
       // Partnerin ekranında kalplerin uçması için bu emit her durumda çalışmalı
+      io.to(targetId).emit('receive_like', { newLikes: partner.likes });
+    }
+}); */
+
+
+socket.on('like_partner', async ({ targetId, increaseCounter }) => {
+    const me = userDetails.get(socket.id);
+    const partner = userDetails.get(targetId);
+
+    // ARTIK BURADAKİ "if (!me.isRegistered) return;" SATIRINI KALDIRDIK VEYA GÜNCELLEDİK
+    if (!me) return;
+
+    if (partner && partner.dbId) {
+      // Sadece karşı tarafın dbId'si varsa ve gönderen kayıtlıysa (increaseCounter true gelmişse) sayaç artsın
+      if (increaseCounter && me.isRegistered) {
+        await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
+        partner.likes += 1;
+        new Log({ userId: socket.id, userIP: me.ip, action: 'LIKED', targetId }).save();
+      }
+
+      // Kalpler her durumda uçsun (Misafirler dahil)
       io.to(targetId).emit('receive_like', { newLikes: partner.likes });
     }
 });
