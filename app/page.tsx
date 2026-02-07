@@ -90,9 +90,11 @@ export default function Home() {
   useEffect(() => {
     setIsMounted(true);
     const storedId = localStorage.getItem("dbUserId");
-    const storedName = localStorage.getItem("userName"); // İsim kontrolü
+    const storedName = localStorage.getItem("userName"); 
+    const storedAvatar = localStorage.getItem("userAvatar"); // EKSİK BURADAYDI: Avatarı hafızadan çekiyoruz
     if (storedId) setDbUserId(storedId);
     if (storedName) setUserName(storedName);
+    if (storedAvatar) setUserAvatar(storedAvatar); // State'e yazıyoruz
     
     const setHeight = () => document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
     setHeight();
@@ -363,9 +365,10 @@ export default function Home() {
                 </div>
               ))}
 
-              {!isSearching && isActive && partnerId && (
-                <div className="absolute top-6 left-6 z-[60] animate-in slide-in-from-left-8">
-                  <div className="flex items-center gap-3 bg-black/40 backdrop-blur-2xl border border-white/10 pl-1.5 pr-4 py-1.5 rounded-full shadow-2xl">
+              {/* STRANGER INFO + KENDİ AVATARIN (Sol Üst) */}
+              <div className="absolute top-6 left-6 z-[60] flex flex-col gap-3">
+                {!isSearching && isActive && partnerId && (
+                  <div className="flex items-center gap-3 bg-black/40 backdrop-blur-2xl border border-white/10 pl-1.5 pr-4 py-1.5 rounded-full shadow-2xl animate-in slide-in-from-left-8">
                     <div className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full text-2xl">{partnerFlag}</div>
                     <div className="flex flex-col">
                         <div className="flex items-center gap-1.5">
@@ -385,8 +388,16 @@ export default function Home() {
                         <span className="text-xl font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+
+                {/* YENİ: KENDİ PROFİL RESMİN (Sol Üst Kalbin Yanı/Altı) */}
+                {userAvatar && !showModal && (
+                  <div className="flex items-center gap-2 bg-white/5 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit animate-in fade-in slide-in-from-left-4">
+                     <img src={userAvatar} alt="Profile" className="w-8 h-8 rounded-full border border-white/20 object-cover" />
+                     <span className="text-[10px] font-bold pr-3 text-zinc-400 uppercase tracking-tighter">You</span>
+                  </div>
+                )}
+              </div>
 
               {!isSearching && isActive && partnerId && (
                 <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-[70]">
@@ -495,7 +506,10 @@ export default function Home() {
                   <div className="bg-white/5 p-6 rounded-3xl border border-white/10 mb-6">
                     {userName ? (
                       <div className="space-y-2 animate-in fade-in zoom-in-95 duration-500">
-                        <p className="text-xs text-zinc-300 font-medium tracking-wide">Hoş geldin,</p>
+                        <div className="flex justify-center mb-2">
+                            <img src={userAvatar || ""} alt="User Avatar" className="w-16 h-16 rounded-full border-2 border-blue-500/50 object-cover shadow-lg shadow-blue-500/20" />
+                        </div>
+                        <p className="text-xs text-zinc-300 font-medium tracking-wide leading-none">Hoş geldin,</p>
                         <h3 className="text-xl font-black text-white uppercase tracking-tight">{userName}!</h3>
                         <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em] pt-2 border-t border-white/5">
                           Cinsiyetini seç ve <span className="text-blue-500">sohbete başla</span>
@@ -517,10 +531,10 @@ export default function Home() {
                               const userData = await res.json();
                               
                               setDbUserId(userData._id);
-                              setUserName(userData.name); // İsim set edildi
-                              setUserAvatar(userData.avatar); //avatar set edildi
+                              setUserName(userData.name); 
+                              setUserAvatar(userData.avatar); 
                               localStorage.setItem("dbUserId", userData._id);
-                              localStorage.setItem("userName", userData.name); // İsim kaydedildi
+                              localStorage.setItem("userName", userData.name); 
                               localStorage.setItem("userAvatar", userData.avatar);
 
                               socket.emit("user_logged_in", { dbUserId: userData._id });
