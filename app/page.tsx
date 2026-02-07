@@ -60,6 +60,8 @@ export default function Home() {
   const [matchNotification, setMatchNotification] = useState<string | null>(null);
 
   const [dbUserId, setDbUserId] = useState<string | null>(null);
+  // YENİ: Kullanıcı ismi için state
+  const [userName, setUserName] = useState<string | null>(null);
 
   // YENİ: Uçuşan kalpler için state
   const [flyingHearts, setFlyingHearts] = useState<{ id: number; left: number; delay: number }[]>([]);
@@ -86,7 +88,9 @@ export default function Home() {
   useEffect(() => {
     setIsMounted(true);
     const storedId = localStorage.getItem("dbUserId");
+    const storedName = localStorage.getItem("userName"); // İsim kontrolü
     if (storedId) setDbUserId(storedId);
+    if (storedName) setUserName(storedName);
     
     const setHeight = () => document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
     setHeight();
@@ -141,7 +145,7 @@ export default function Home() {
       }));
       setFlyingHearts(prev => [...prev, ...newHearts]);
       setTimeout(() => {
-        setFlyingHearts(prev => prev.filter(h => !newHearts.find(nh => nh.id === h.id)));
+        setFlyingHearts(prev => prev.filter(heart => !newHearts.find(nh => nh.id === heart.id)));
       }, 2500);
 
       setTimeout(() => setMatchNotification(null), 3000);
@@ -485,32 +489,47 @@ export default function Home() {
                     <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-[0.4em]">Premium Network</p>
                   </div>
                   
+                  {/* LOGIN BÖLÜMÜ GÜNCELLENDİ */}
                   <div className="bg-white/5 p-6 rounded-3xl border border-white/10 mb-6">
-                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-4 leading-relaxed text-center">
-                      Login to collect <span className="text-pink-500">hearts</span> ❤️
-                    </p>
-                    <div className="flex justify-center">
-                      <GoogleLogin
-                        onSuccess={async (credentialResponse) => {
-                          const res = await fetch("https://videochat-1qxi.onrender.com/api/auth/social-login", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ token: credentialResponse.credential }) 
-                          });
-                          const userData = await res.json();
-                          
-                          setDbUserId(userData._id);
-                          localStorage.setItem("dbUserId", userData._id);
-                          
-                          socket.emit("user_logged_in", { dbUserId: userData._id });
-                          
-                          alert("Login successful!");
-                        }}
-                        onError={() => console.log('Login Failed')}
-                        theme="filled_black"
-                        shape="pill"
-                      />
-                    </div>
+                    {userName ? (
+                      <div className="space-y-2 animate-in fade-in zoom-in-95 duration-500">
+                        <p className="text-xs text-zinc-300 font-medium tracking-wide">Hoş geldin,</p>
+                        <h3 className="text-xl font-black text-white uppercase tracking-tight leading-none pb-1">{userName}!</h3>
+                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em] leading-relaxed pt-2 border-t border-white/5">
+                          Cinsiyetini seç ve <span className="text-blue-500">sohbete başla</span>
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-4 leading-relaxed text-center">
+                          Login to collect <span className="text-pink-500">hearts</span> ❤️
+                        </p>
+                        <div className="flex justify-center">
+                          <GoogleLogin
+                            onSuccess={async (credentialResponse) => {
+                              const res = await fetch("https://videochat-1qxi.onrender.com/api/auth/social-login", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ token: credentialResponse.credential }) 
+                              });
+                              const userData = await res.json();
+                              
+                              setDbUserId(userData._id);
+                              setUserName(userData.name); // İsim set edildi
+                              localStorage.setItem("dbUserId", userData._id);
+                              localStorage.setItem("userName", userData.name); // İsim kaydedildi
+                              
+                              socket.emit("user_logged_in", { dbUserId: userData._id });
+                              
+                              alert(`Hoş geldin ${userData.name}!`);
+                            }}
+                            onError={() => console.log('Login Failed')}
+                            theme="filled_black"
+                            shape="pill"
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
