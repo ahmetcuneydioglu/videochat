@@ -474,32 +474,40 @@ const handleLike = () => {
               ))}
 
               <div className="absolute top-6 left-6 z-[60] flex flex-col gap-3">
+                {/* STRANGER INFO BÜYÜTÜLDÜ */}
                 {!isSearching && isActive && partnerId && (
-                  <div className="flex items-center gap-3 bg-black/40 backdrop-blur-2xl border border-white/10 pl-1.5 pr-4 py-1.5 rounded-full shadow-2xl animate-in slide-in-from-left-8">
-                    <div className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full text-2xl">{partnerFlag}</div>
-                    <div className="flex flex-col">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
-                          <span className="text-[11px] font-black text-white uppercase leading-none">{partnerCountry}</span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Live</span>
-                          <div 
-                            onClick={handleLike} 
-                            className="flex items-center gap-1 bg-pink-500/10 px-1.5 py-0.5 rounded-md cursor-pointer hover:bg-pink-500/20 transition-colors"
-                          >
-                            <Heart size={8} className="text-pink-500 fill-pink-500" />
-                            <span className="text-[9px] font-black text-pink-500">{partnerLikes}</span>
-                          </div>
-                        </div>
+                  <div className="flex items-center gap-4 bg-black/60 backdrop-blur-3xl border border-white/10 pl-2 pr-6 py-2 rounded-2xl shadow-2xl animate-in slide-in-from-left-8">
+                    {/* Bayrak Alanı */}
+                    <div className="w-12 h-12 flex items-center justify-center bg-white/5 rounded-xl text-3xl shadow-inner">
+                      {partnerFlag}
                     </div>
-                    <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
-                    <div className={`flex items-center justify-center w-9 h-9 rounded-xl ${partnerGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                        <span className="text-xl font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
+
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.8)]"></div>
+                        <span className="text-[13px] font-black text-white uppercase tracking-tight">{partnerCountry}</span>
+                      </div>
+                      
+                      {/* KALP SAYACI - BÜYÜTÜLDÜ */}
+                      <div 
+                        onClick={handleLike}
+                        className="flex items-center gap-2 bg-pink-500/20 px-2.5 py-1 rounded-lg cursor-pointer hover:bg-pink-500/30 transition-all border border-pink-500/20"
+                      >
+                        <Heart size={14} className="text-pink-500 fill-pink-500" />
+                        <span className="text-sm font-black text-pink-500 tabular-nums">
+                          {partnerLikes}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="h-8 w-[1px] bg-white/10 mx-1"></div>
+
+                    {/* Cinsiyet İkonu */}
+                    <div className={`flex items-center justify-center w-10 h-10 rounded-xl shadow-lg ${partnerGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                      <span className="text-2xl font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
                     </div>
                   </div>
                 )}
-
                 {userAvatar && !showModal && (
                   <div className="flex items-center gap-2 bg-white/5 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit animate-in fade-in slide-in-from-left-4">
                      <img src={userAvatar} alt="Profile" className="w-8 h-8 rounded-full border border-white/20 object-cover" onError={(e) => (e.currentTarget.src = "https://ui-avatars.com/api/?name=" + userName + "&background=0D8ABC&color=fff")} />
@@ -554,13 +562,34 @@ const handleLike = () => {
                   <div ref={mobileChatEndRef} />
               </div>
 
+              {/* ALT KONTROL BARI - YENİ DÜZENLEME */}
               {!showModal && (
-                <div className="md:hidden absolute bottom-6 left-1/2 -translate-x-1/2 w-[92%] h-16 bg-white/5 backdrop-blur-3xl border border-white/10 rounded-[28px] flex items-center justify-between px-6 z-[100] shadow-2xl">
-                  <button onClick={toggleActive} className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all active:scale-90 ${isActive ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}>
-                    {isActive ? <Square size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
+                <div className="md:hidden absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-center justify-between px-8 z-[100]">
+                  {/* Durdur/Başlat Butonu */}
+                  <button 
+                    onClick={toggleActive} 
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all active:scale-90 ${isActive ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}
+                  >
+                    {isActive ? <Square size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
                   </button>
-                  <button onClick={() => handleNext()} disabled={!isActive} className="bg-blue-600 text-white px-7 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest disabled:opacity-30 flex items-center gap-2 active:scale-95 transition-all shadow-xl shadow-blue-500/20"><SkipForward size={14} fill="currentColor" /> Next</button>
-                  <button onClick={() => setIsMobileInputActive(!isMobileInputActive)} disabled={!isActive || !partnerId} className={`w-11 h-11 rounded-2xl flex items-center justify-center active:scale-90 ${isMobileInputActive ? 'bg-zinc-700' : 'bg-white/10'}`}><MessageCircle size={20} /></button>
+
+                  {/* NEXT Butonu */}
+                  <button 
+                    onClick={() => handleNext()} 
+                    disabled={!isActive} 
+                    className="bg-blue-600 text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] disabled:opacity-30 flex items-center gap-3 active:scale-95 transition-all shadow-2xl shadow-blue-500/40"
+                  >
+                    <SkipForward size={18} fill="currentColor" /> NEXT
+                  </button>
+
+                  {/* Mesaj Butonu */}
+                  <button 
+                    onClick={() => setIsMobileInputActive(!isMobileInputActive)} 
+                    disabled={!isActive || !partnerId} 
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center active:scale-90 ${isMobileInputActive ? 'bg-blue-600 text-white' : 'bg-white/10 text-white'}`}
+                  >
+                    <MessageCircle size={24} />
+                  </button>
                 </div>
               )}
 
