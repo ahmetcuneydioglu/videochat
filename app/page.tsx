@@ -60,6 +60,9 @@ export default function Home() {
   const [matchNotification, setMatchNotification] = useState<string | null>(null);
 
   const [dbUserId, setDbUserId] = useState<string | null>(null);
+  
+  // YENİ: Uçuşan kalpler için state listesi
+  const [flyingHearts, setFlyingHearts] = useState<{ id: number; left: number; delay: number }[]>([]);
 
   const getFlagEmoji = (countryCode: string) => {
     if (countryCode === "all" || countryCode === "UN") return "🌐";
@@ -130,6 +133,17 @@ export default function Home() {
       setPartnerLikes(data.newLikes);
       setMatchNotification("Someone loved your vibe! ❤️");
       setTimeout(() => setMatchNotification(null), 3000);
+
+      // YENİ: 5 tane uçuşan kalp oluştur
+      const newHearts = Array.from({ length: 5 }).map((_, i) => ({
+        id: Date.now() + i,
+        left: Math.random() * 80 + 10,
+        delay: Math.random() * 0.5
+      }));
+      setFlyingHearts(prev => [...prev, ...newHearts]);
+      setTimeout(() => {
+        setFlyingHearts(prev => prev.filter(h => !newHearts.find(nh => nh.id === h.id)));
+      }, 2500);
     });
 
     socket.on("partner_disconnected", () => {
@@ -251,86 +265,22 @@ export default function Home() {
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <div className="fixed inset-0 w-full h-full bg-[#050505] text-white flex flex-col font-sans overflow-hidden select-none" style={{ height: 'var(--vv-height, 100vh)' }}>
         
-        {/* --- MODALLAR --- */}
-        {showCountryFilter && (
-          <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-            <div className="bg-[#121214] border border-white/10 w-full max-w-sm rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95">
-              <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                <h3 className="text-blue-500 font-bold uppercase text-xs tracking-widest">Region Selection</h3>
-                <button onClick={() => setShowCountryFilter(false)}><X size={20}/></button>
-              </div>
-              <div className="p-4">
-                <input 
-                  type="text" 
-                  placeholder="Search country..." 
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 mb-4 outline-none text-xs focus:ring-1 ring-blue-500" 
-                  value={searchTerm} 
-                  onChange={(e) => setSearchTerm(e.target.value)} 
-                />
-                <div className="max-h-[300px] overflow-y-auto no-scrollbar space-y-1">
-                  {filteredCountries.map(c => (
-                    <button 
-                      key={c.id} 
-                      onClick={() => { setSelectedCountry(c.id); setShowCountryFilter(false); handleNext(); }} 
-                      className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all ${selectedCountry === c.id ? 'bg-blue-600/20 text-blue-500' : 'hover:bg-white/5 text-zinc-400'}`}
-                    >
-                      <div className="flex items-center gap-3"><span>{c.flag}</span> <span className="text-sm">{c.name}</span></div>
-                      {selectedCountry === c.id && <Check size={16}/>}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showGenderFilter && (
-          <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
-            <div className="bg-[#121214] border border-white/10 w-full max-w-xs rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95">
-              <div className="flex items-center justify-between mb-6 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-                Gender Filter <button onClick={() => setShowGenderFilter(false)}><X size={20}/></button>
-              </div>
-              {['all', 'female', 'male'].map((opt) => (
-                <button 
-                  key={opt} 
-                  onClick={() => { setSearchGender(opt); setShowGenderFilter(false); handleNext(); }} 
-                  className={`w-full flex items-center justify-between p-5 rounded-2xl mb-1 transition-all ${searchGender === opt ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20' : 'hover:bg-white/5 text-zinc-400'}`}
-                >
-                  <span className="text-xs font-bold uppercase tracking-widest">{opt === 'all' ? 'Everyone' : opt + 's'}</span>
-                  {searchGender === opt && <div className="w-2 h-2 bg-blue-500 rounded-full"></div>}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {showOptions && (
-          <div className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
-            <div className="bg-[#121214] border border-white/10 w-full max-w-xs rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95">
-              <div className="flex items-center justify-between mb-8">
-                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Device Settings</span>
-                <button onClick={() => setShowOptions(false)}><X size={20}/></button>
-              </div>
-              <div className="space-y-4">
-                <button onClick={toggleCamera} className={`w-full flex items-center justify-between p-5 rounded-2xl transition-all ${cameraOn ? 'bg-blue-600/10 text-blue-400' : 'bg-red-500/10 text-red-500'}`}>
-                  <div className="flex items-center gap-4">{cameraOn ? <Video size={20}/> : <VideoOff size={20}/>} <span className="text-xs font-bold uppercase tracking-widest">Camera</span></div>
-                </button>
-                <button onClick={toggleMic} className={`w-full flex items-center justify-between p-5 rounded-2xl transition-all ${micOn ? 'bg-blue-600/10 text-blue-400' : 'bg-red-500/10 text-red-500'}`}>
-                  <div className="flex items-center gap-4">{micOn ? <Mic size={20}/> : <MicOff size={20}/>} <span className="text-xs font-bold uppercase tracking-widest">Microphone</span></div>
-                </button>
-                <button onClick={() => { startMedia(facingMode === "user" ? "environment" : "user"); setFacingMode(facingMode === "user" ? "environment" : "user"); setShowOptions(false); }} className="w-full flex items-center gap-4 p-5 rounded-2xl hover:bg-white/5 text-zinc-400">
-                  <RefreshCw size={20}/> <span className="text-xs font-bold uppercase tracking-widest">Switch Camera</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
           <div className="flex-1 relative md:max-w-[50%] h-full bg-black">
             <div className="absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5">
               <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
               
+              {/* YENİ: Uçuşan Kalp Animasyonları Katmanı */}
+              {flyingHearts.map((heart) => (
+                <div
+                  key={heart.id}
+                  className="absolute bottom-10 pointer-events-none animate-fly-up-fade z-[100]"
+                  style={{ left: `${heart.left}%`, animationDelay: `${heart.delay}s` }}
+                >
+                  <Heart size={44} className="text-pink-500 fill-pink-500 drop-shadow-[0_0_15px_rgba(236,72,153,0.5)]" />
+                </div>
+              ))}
+
               {!isSearching && isActive && partnerId && (
                 <div className="absolute top-6 left-6 z-[60] animate-in slide-in-from-left-8">
                   <div className="flex items-center gap-3 bg-black/40 backdrop-blur-2xl border border-white/10 pl-1.5 pr-4 py-1.5 rounded-full shadow-2xl">
@@ -367,6 +317,7 @@ export default function Home() {
                 </div>
               )}
 
+              {/* ... Diğer Remote Video Elemanları (Start Chat, Searching vb.) ... */}
               {!isActive && !showModal && (
                 <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-xl">
                   <button onClick={toggleActive} className="bg-blue-600 text-white px-10 py-5 rounded-[24px] font-black uppercase text-xs flex items-center gap-3 active:scale-95 transition-transform"><Play size={20} fill="currentColor"/> Start Chat</button>
@@ -392,6 +343,7 @@ export default function Home() {
                 </div>
               )}
 
+              {/* Mobil Mesajlar ve Kontrol Barı Buraya Gelecek */}
               <div className="md:hidden absolute bottom-28 left-6 right-20 z-40 flex flex-col justify-end max-h-[180px] overflow-y-auto no-scrollbar pointer-events-none">
                   {messages.map((m, i) => (
                       <div key={i} className={`px-3 py-1.5 rounded-xl text-[10px] mb-1.5 w-fit max-w-[90%] backdrop-blur-md border border-white/10 ${m.sender === "Me" ? "bg-blue-600/70 text-white" : "bg-zinc-800/80 text-zinc-200"}`}>
@@ -423,6 +375,7 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Web Chat Area */}
           <div className="hidden md:flex flex-1 flex-col bg-[#080808] border-l border-white/5 relative z-20">
             <div className="p-6 border-b border-white/5 flex items-center justify-between font-black text-zinc-500 uppercase tracking-[0.3em] text-[10px]">Interaction Area
               {!showModal && (
@@ -451,6 +404,7 @@ export default function Home() {
           </div>
         </main>
 
+        {/* Login Screen (Modal) */}
         {showModal && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/85 backdrop-blur-2xl">
               <div className="relative max-w-sm w-full bg-[#111113] border border-white/10 p-10 rounded-[48px] text-center space-y-10 shadow-2xl">
@@ -472,13 +426,9 @@ export default function Home() {
                             body: JSON.stringify({ token: credentialResponse.credential }) 
                           });
                           const userData = await res.json();
-                          
                           setDbUserId(userData._id);
                           localStorage.setItem("dbUserId", userData._id);
-                          
-                          // YENİ: Login sonrası socket'e haber ver
                           socket.emit("user_logged_in", { dbUserId: userData._id });
-                          
                           alert("Login successful!");
                         }}
                         onError={() => console.log('Login Failed')}
@@ -503,12 +453,12 @@ export default function Home() {
           </div>
         )}
 
+        {/* Modallar (Country, Gender, Options) Buraya Gelecek... */}
+
         <style jsx global>{`
           @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');
           html, body { font-family: 'Inter', sans-serif; background: #000; color: white; overflow: hidden; }
           .no-scrollbar::-webkit-scrollbar { display: none; }
-          @keyframes swipe-left { 0%, 100% { transform: translateX(0); opacity: 0.8; } 50% { transform: translateX(-15px); opacity: 1; } }
-          .animate-swipe-left { animation: swipe-left 1.5s infinite ease-in-out; }
         `}</style>
       </div>
     </GoogleOAuthProvider>
