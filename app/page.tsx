@@ -507,8 +507,22 @@ export default function Home() {
                     {userName ? (
                       <div className="space-y-2 animate-in fade-in zoom-in-95 duration-500">
                         <div className="flex justify-center mb-2">
-                            <img src={userAvatar || ""} alt="User Avatar" className="w-16 h-16 rounded-full border-2 border-blue-500/50 object-cover shadow-lg shadow-blue-500/20" />
-                        </div>
+                            {userAvatar ? (
+                              <img 
+                                src={userAvatar} 
+                                alt="User Avatar" 
+                                className="w-16 h-16 rounded-full border-2 border-blue-500/50 object-cover shadow-lg shadow-blue-500/20"
+                                onError={(e) => {
+                                  // Resim yüklenemezse varsayılan bir ikon göster
+                                  (e.target as HTMLImageElement).src = "https://ui-avatars.com/api/?name=" + userName + "&background=0D8ABC&color=fff";
+                                }}
+                              />
+                            ) : (
+                              <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center border-2 border-white/10">
+                                <User size={32} className="text-zinc-500" />
+                              </div>
+                            )}
+                          </div>
                         <p className="text-xs text-zinc-300 font-medium tracking-wide leading-none">Hoş geldin,</p>
                         <h3 className="text-xl font-black text-white uppercase tracking-tight">{userName}!</h3>
                         <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em] pt-2 border-t border-white/5">
