@@ -205,19 +205,27 @@ socket.on('like_partner', async ({ targetId, increaseCounter }) => {
     const me = userDetails.get(socket.id);
     const partner = userDetails.get(targetId);
 
-    if (!me || !partner) return; // Partner yoksa işlem yapma
+    // Temel güvenlik: Gönderen veya alan yoksa çık
+    if (!me || !partner) return;
 
-    // 1. ADIM: Sayaç Artırma (Sadece her iki taraf kayıtlıysa)
-    // Gönderen kayıtlıysa (increaseCounter frontend'den true gelir) 
-    // ve alan kişinin dbId'si varsa puanı artır.
+    // 1. SAYAÇ GÜNCELLEME (Veritabanı İşlemi)
+    // Koşullar: 
+    // - increaseCounter true gelmeli (frontend'den ilk basışta gelir)
+    // - Gönderen kayıtlı olmalı (me.isRegistered)
+    // - Alan kayıtlı olmalı (partner.dbId var olmalı)
     if (increaseCounter && me.isRegistered && partner.dbId) {
-      await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
-      partner.likes += 1;
-      new Log({ userId: socket.id, userIP: me.ip, action: 'LIKED', targetId }).save();
+        try {
+            await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
+            partner.likes += 1;
+            new Log({ userId: socket.id, userIP: me.ip, action: 'LIKED', targetId }).save();
+        } catch (err) {
+            console.error("Like update error:", err);
+        }
     }
 
-    // 2. ADIM: Görsel Efekt (Herkes için)
-    // dbId olsun ya da olmasın, partner mevcutsa kalpleri uçur.
+    // 2. GÖRSEL EFEKT (Soket Yayını)
+    // BU SATIR IF BLOĞUNUN DIŞINDA OLMALI!
+    // Partner ister kayıtlı olsun ister kayıtsız, bu sinyal ona gider ve kalpler uçar.
     io.to(targetId).emit('receive_like', { newLikes: partner.likes });
 });
 

@@ -259,18 +259,21 @@ export default function Home() {
  */
 
 const handleLike = () => {
-  // Kendi ekranında her zaman uçur
+  // Her basışta kendi ekranında uçur (hissiyat için önemli)
   triggerHeartAnimation();
 
   if (partnerId) {
-    // Sinyali gönder: 
-    // dbUserId varsa ve daha önce beğenmediyse 'increaseCounter' true gider.
-    // Misafir ise her zaman false gider ama sinyal yine de iletilir.
+    // SİNYAL GÖNDERİMİ:
+    // Eğer ben kayıtlıysam ve ilk kez basıyorsam 'true' gönderirim.
+    // Eğer ben kayıtsızsam her zaman 'false' gönderirim.
+    const shouldIncrease = dbUserId ? !hasLiked : false;
+
     socket.emit("like_partner", { 
       targetId: partnerId, 
-      increaseCounter: dbUserId ? !hasLiked : false 
+      increaseCounter: shouldIncrease 
     });
 
+    // İlk basıştan sonra state'i kapat (kayıtlılar için)
     if (!hasLiked && dbUserId) {
       setHasLiked(true);
     }
