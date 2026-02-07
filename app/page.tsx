@@ -6,7 +6,7 @@ import { countries as rawCountries } from 'countries-list';
 import { 
   Video, VideoOff, Mic, MicOff, RefreshCw, 
   User, Flag, Settings, MessageCircle, X, 
-  Play, Square, SkipForward, Globe, Check, Heart, ShieldAlert
+  Play, Square, SkipForward, Globe, Check, Heart, ShieldAlert, LogIn
 } from 'lucide-react';
 
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
@@ -38,6 +38,7 @@ export default function Home() {
   const [showOptions, setShowOptions] = useState(false);
   const [showGenderFilter, setShowGenderFilter] = useState(false);
   const [showCountryFilter, setShowCountryFilter] = useState(false);
+  const [showLoginRequired, setShowLoginRequired] = useState(false); // YENİ: Login uyarısı modalı
   
   const [cameraOn, setCameraOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
@@ -91,10 +92,10 @@ export default function Home() {
     setIsMounted(true);
     const storedId = localStorage.getItem("dbUserId");
     const storedName = localStorage.getItem("userName"); 
-    const storedAvatar = localStorage.getItem("userAvatar"); // EKSİK BURADAYDI: Avatarı hafızadan çekiyoruz
+    const storedAvatar = localStorage.getItem("userAvatar"); 
     if (storedId) setDbUserId(storedId);
     if (storedName) setUserName(storedName);
-    if (storedAvatar) setUserAvatar(storedAvatar); // State'e yazıyoruz
+    if (storedAvatar) setUserAvatar(storedAvatar); 
     
     const setHeight = () => document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
     setHeight();
@@ -203,7 +204,7 @@ export default function Home() {
 
   const handleLike = () => {
     if (!dbUserId) {
-      alert("Please login with Google to send hearts! ❤️");
+      setShowLoginRequired(true); // GÜNCELLENDİ: Alert yerine modal açılıyor
       return;
     }
     if (partnerId) {
@@ -275,6 +276,46 @@ export default function Home() {
       <div className="fixed inset-0 w-full h-full bg-[#050505] text-white flex flex-col font-sans overflow-hidden select-none" style={{ height: 'var(--vv-height, 100vh)' }}>
         
         {/* --- MODALLAR --- */}
+
+        {/* YENİ: LOGIN REQUIRED MODALI */}
+        {showLoginRequired && (
+          <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-2xl">
+            <div className="bg-[#121214] border border-blue-500/20 w-full max-w-sm rounded-[40px] p-8 shadow-2xl text-center relative animate-in zoom-in-95 duration-300">
+              <button onClick={() => setShowLoginRequired(false)} className="absolute top-6 right-6 text-zinc-500 hover:text-white transition-colors"><X size={24}/></button>
+              <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <LogIn size={32} className="text-blue-500" />
+              </div>
+              <h3 className="text-2xl font-black uppercase italic tracking-tighter text-white mb-2">Premium Feature</h3>
+              <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest mb-8 leading-relaxed text-center">
+                Login with Google to use <span className="text-blue-500">filters</span> and collect <span className="text-pink-500">hearts</span> ❤️
+              </p>
+              <div className="flex justify-center scale-110 mb-4">
+                <GoogleLogin
+                  onSuccess={async (credentialResponse) => {
+                    const res = await fetch("https://videochat-1qxi.onrender.com/api/auth/social-login", {
+                      method: "POST", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ token: credentialResponse.credential }) 
+                    });
+                    const userData = await res.json();
+                    setDbUserId(userData._id);
+                    setUserName(userData.name); 
+                    setUserAvatar(userData.avatar); 
+                    localStorage.setItem("dbUserId", userData._id);
+                    localStorage.setItem("userName", userData.name); 
+                    localStorage.setItem("userAvatar", userData.avatar);
+                    socket.emit("user_logged_in", { dbUserId: userData._id });
+                    setShowLoginRequired(false);
+                    alert(`Welcome ${userData.name}!`);
+                  }}
+                  onError={() => console.log('Login Failed')}
+                  theme="filled_blue"
+                  shape="pill"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {showCountryFilter && (
           <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <div className="bg-[#121214] border border-white/10 w-full max-w-sm rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95">
@@ -393,7 +434,7 @@ export default function Home() {
                 {/* YENİ: KENDİ PROFİL RESMİN (Sol Üst Kalbin Yanı/Altı) */}
                 {userAvatar && !showModal && (
                   <div className="flex items-center gap-2 bg-white/5 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit animate-in fade-in slide-in-from-left-4">
-                     <img src={userAvatar} alt="Profile" className="w-8 h-8 rounded-full border border-white/20 object-cover" />
+                     <img src={userAvatar} alt="Profile" className="w-8 h-8 rounded-full border border-white/20 object-cover" onError={(e) => (e.currentTarget.src = "https://ui-avatars.com/api/?name=" + userName + "&background=0D8ABC&color=fff")} />
                      <span className="text-[10px] font-bold pr-3 text-zinc-400 uppercase tracking-tighter">You</span>
                   </div>
                 )}
@@ -430,8 +471,9 @@ export default function Home() {
               {!showModal && (
                 <div className="absolute right-6 top-6 flex flex-col gap-4 z-[80]">
                   <button onClick={() => setShowOptions(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Settings size={26}/></button>
-                  <button onClick={() => setShowGenderFilter(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><User size={26}/></button>
-                  <button onClick={() => setShowCountryFilter(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Globe size={26}/></button>
+                  {/* GÜNCEL: Filtreler için login kontrolü */}
+                  <button onClick={() => dbUserId ? setShowGenderFilter(true) : setShowLoginRequired(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><User size={26}/></button>
+                  <button onClick={() => dbUserId ? setShowCountryFilter(true) : setShowLoginRequired(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Globe size={26}/></button>
                 </div>
               )}
 
@@ -502,65 +544,23 @@ export default function Home() {
                     <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-[0.4em]">Premium Network</p>
                   </div>
                   
-                  {/* LOGIN BÖLÜMÜ GÜNCELLENDİ */}
+                  {/* MODAL GÜNCELLEMESİ: Google Login kaldırıldı, misafir dostu yapıldı */}
                   <div className="bg-white/5 p-6 rounded-3xl border border-white/10 mb-6">
                     {userName ? (
                       <div className="space-y-2 animate-in fade-in zoom-in-95 duration-500">
                         <div className="flex justify-center mb-2">
-                            {userAvatar ? (
-                              <img 
-                                src={userAvatar} 
-                                alt="User Avatar" 
-                                className="w-16 h-16 rounded-full border-2 border-blue-500/50 object-cover shadow-lg shadow-blue-500/20"
-                                onError={(e) => {
-                                  // Resim yüklenemezse varsayılan bir ikon göster
-                                  (e.target as HTMLImageElement).src = "https://ui-avatars.com/api/?name=" + userName + "&background=0D8ABC&color=fff";
-                                }}
-                              />
-                            ) : (
-                              <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center border-2 border-white/10">
-                                <User size={32} className="text-zinc-500" />
-                              </div>
-                            )}
-                          </div>
+                            <img src={userAvatar || ""} alt="User Avatar" className="w-16 h-16 rounded-full border-2 border-blue-500/50 object-cover shadow-lg shadow-blue-500/20" onError={(e) => (e.currentTarget.src = "https://ui-avatars.com/api/?name=" + userName + "&background=0D8ABC&color=fff")} />
+                        </div>
                         <p className="text-xs text-zinc-300 font-medium tracking-wide leading-none">Hoş geldin,</p>
                         <h3 className="text-xl font-black text-white uppercase tracking-tight">{userName}!</h3>
                         <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em] pt-2 border-t border-white/5">
-                          Cinsiyetini seç ve <span className="text-blue-500">sohbete başla</span>
+                          Cinsiyetini seç ve <span className="text-blue-500 text-sm">başla</span>
                         </p>
                       </div>
-                        ) : (
-                      <>
-                        <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-4 leading-relaxed text-center">
-                          Login to collect <span className="text-pink-500">hearts</span> ❤️
-                        </p>
-                        <div className="flex justify-center">
-                          <GoogleLogin
-                            onSuccess={async (credentialResponse) => {
-                              const res = await fetch("https://videochat-1qxi.onrender.com/api/auth/social-login", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ token: credentialResponse.credential }) 
-                              });
-                              const userData = await res.json();
-                              
-                              setDbUserId(userData._id);
-                              setUserName(userData.name); 
-                              setUserAvatar(userData.avatar); 
-                              localStorage.setItem("dbUserId", userData._id);
-                              localStorage.setItem("userName", userData.name); 
-                              localStorage.setItem("userAvatar", userData.avatar);
-
-                              socket.emit("user_logged_in", { dbUserId: userData._id });
-                              
-                              alert(`Welcome ${userData.name}!`);
-                            }}
-                            onError={() => console.log('Login Failed')}
-                            theme="filled_black"
-                            shape="pill"
-                          />
-                        </div>
-                      </>
+                    ) : (
+                      <p className="text-[11px] text-zinc-400 font-bold uppercase tracking-[0.2em] leading-relaxed text-center">
+                        Select your gender to <br /><span className="text-blue-500 text-sm">start chatting</span> instantly
+                      </p>
                     )}
                   </div>
 
@@ -574,7 +574,7 @@ export default function Home() {
                           <span className="text-[10px] uppercase font-black">Female</span>
                       </button>
                   </div>
-                  <button onClick={() => { if(!myGender) return alert("Select gender!"); setShowModal(false); setIsActive(true); handleNext(); }} className="w-full bg-zinc-100 text-black py-5 rounded-[24px] font-black text-lg hover:bg-blue-600 hover:text-white transition-all active:scale-95">LET'S GO 🚀</button>
+                  <button onClick={() => { if(!myGender) return alert("Select gender!"); setShowModal(false); setIsActive(true); handleNext(); }} className="w-full bg-zinc-100 text-black py-5 rounded-[24px] font-black text-lg hover:bg-blue-600 hover:text-white transition-all active:scale-95 uppercase">Let&apos;s Go 🚀</button>
               </div>
           </div>
         )}
