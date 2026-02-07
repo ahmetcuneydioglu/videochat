@@ -31,14 +31,13 @@ export default function Home() {
   const mobileChatEndRef = useRef<HTMLDivElement>(null);
   const peerRef = useRef<Peer.Instance | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [isActive, setIsActive] = useState(false);
   const [showModal, setShowModal] = useState(true);
   const [showOptions, setShowOptions] = useState(false);
   const [showGenderFilter, setShowGenderFilter] = useState(false);
   const [showCountryFilter, setShowCountryFilter] = useState(false);
-  const [showLoginRequired, setShowLoginRequired] = useState(false); // YENİ: Login uyarısı modalı
+  const [showLoginRequired, setShowLoginRequired] = useState(false); 
   
   const [cameraOn, setCameraOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
@@ -61,12 +60,9 @@ export default function Home() {
   const [matchNotification, setMatchNotification] = useState<string | null>(null);
 
   const [dbUserId, setDbUserId] = useState<string | null>(null);
-
-  // YENİ: Kullanıcı ismi için state
   const [userName, setUserName] = useState<string | null>(null);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
 
-  // YENİ: Uçuşan kalpler için state
   const [flyingHearts, setFlyingHearts] = useState<{ id: number; left: number; delay: number }[]>([]);
 
   const getFlagEmoji = (countryCode: string) => {
@@ -117,6 +113,19 @@ export default function Home() {
     } catch (err) { console.error("Media error:", err); }
   };
 
+  // KALP ANİMASYON FONKSİYONU (Tekrar kullanımı için ayrıldı)
+  const triggerHeartAnimation = () => {
+    const newHearts = Array.from({ length: 5 }).map((_, i) => ({
+      id: Date.now() + i,
+      left: Math.random() * 80 + 10,
+      delay: Math.random() * 0.5
+    }));
+    setFlyingHearts(prev => [...prev, ...newHearts]);
+    setTimeout(() => {
+      setFlyingHearts(prev => prev.filter(heart => !newHearts.find(nh => nh.id === heart.id)));
+    }, 2500);
+  };
+
   useEffect(() => {
     if (isMounted) startMedia();
 
@@ -141,18 +150,7 @@ export default function Home() {
     socket.on("receive_like", (data) => {
       setPartnerLikes(data.newLikes);
       setMatchNotification("Someone loved your vibe! ❤️");
-
-      // YENİ: Kalp animasyonunu tetikle
-      const newHearts = Array.from({ length: 5 }).map((_, i) => ({
-        id: Date.now() + i,
-        left: Math.random() * 80 + 10,
-        delay: Math.random() * 0.5
-      }));
-      setFlyingHearts(prev => [...prev, ...newHearts]);
-      setTimeout(() => {
-        setFlyingHearts(prev => prev.filter(heart => !newHearts.find(nh => nh.id === heart.id)));
-      }, 2500);
-
+      triggerHeartAnimation(); // Animasyon tetikle
       setTimeout(() => setMatchNotification(null), 3000);
     });
 
@@ -202,11 +200,16 @@ export default function Home() {
     socket.emit("find_partner", { myGender, searchGender, selectedCountry });
   };
 
+  // HANDLE LIKE GÜNCELLENDİ: ARTIK ANİMASYON TETİKLİYOR
   const handleLike = () => {
     if (!dbUserId) {
-      setShowLoginRequired(true); // GÜNCELLENDİ: Alert yerine modal açılıyor
+      setShowLoginRequired(true);
       return;
     }
+    
+    // Basar basmaz kendi ekranımızda animasyon oynasın
+    triggerHeartAnimation();
+
     if (partnerId) {
       socket.emit("like_partner", { targetId: partnerId });
     }
@@ -276,8 +279,6 @@ export default function Home() {
       <div className="fixed inset-0 w-full h-full bg-[#050505] text-white flex flex-col font-sans overflow-hidden select-none" style={{ height: 'var(--vv-height, 100vh)' }}>
         
         {/* --- MODALLAR --- */}
-
-        {/* YENİ: LOGIN REQUIRED MODALI */}
         {showLoginRequired && (
           <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-2xl">
             <div className="bg-[#121214] border border-blue-500/20 w-full max-w-sm rounded-[40px] p-8 shadow-2xl text-center relative animate-in zoom-in-95 duration-300">
@@ -395,7 +396,6 @@ export default function Home() {
             <div className="absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5">
               <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
               
-              {/* YENİ: UÇUŞAN KALPLER KATMANI */}
               {flyingHearts.map((heart) => (
                 <div 
                   key={heart.id} 
@@ -406,7 +406,6 @@ export default function Home() {
                 </div>
               ))}
 
-              {/* STRANGER INFO + KENDİ AVATARIN (Sol Üst) */}
               <div className="absolute top-6 left-6 z-[60] flex flex-col gap-3">
                 {!isSearching && isActive && partnerId && (
                   <div className="flex items-center gap-3 bg-black/40 backdrop-blur-2xl border border-white/10 pl-1.5 pr-4 py-1.5 rounded-full shadow-2xl animate-in slide-in-from-left-8">
@@ -418,7 +417,10 @@ export default function Home() {
                         </div>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Live</span>
-                          <div className="flex items-center gap-1 bg-pink-500/10 px-1.5 py-0.5 rounded-md">
+                          <div 
+                            onClick={handleLike} // YENİ: Sol üstteki küçük kalp de artık beğeni atıyor
+                            className="flex items-center gap-1 bg-pink-500/10 px-1.5 py-0.5 rounded-md cursor-pointer hover:bg-pink-500/20 transition-colors"
+                          >
                             <Heart size={8} className="text-pink-500 fill-pink-500" />
                             <span className="text-[9px] font-black text-pink-500">{partnerLikes}</span>
                           </div>
@@ -431,7 +433,6 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* YENİ: KENDİ PROFİL RESMİN (Sol Üst Kalbin Yanı/Altı) */}
                 {userAvatar && !showModal && (
                   <div className="flex items-center gap-2 bg-white/5 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit animate-in fade-in slide-in-from-left-4">
                      <img src={userAvatar} alt="Profile" className="w-8 h-8 rounded-full border border-white/20 object-cover" onError={(e) => (e.currentTarget.src = "https://ui-avatars.com/api/?name=" + userName + "&background=0D8ABC&color=fff")} />
@@ -441,7 +442,8 @@ export default function Home() {
               </div>
 
               {!isSearching && isActive && partnerId && (
-                <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-[70]">
+                // DÜZELTME: Butonlar mobilde navigasyonun üzerine binmesin diye bottom-24 yapıldı
+                <div className="absolute bottom-24 md:bottom-6 right-6 flex flex-col gap-3 z-[70]">
                   <button onClick={handleReport} className="w-12 h-12 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center text-zinc-400 hover:text-red-500 transition-all active:scale-90">
                     <ShieldAlert size={24} />
                   </button>
@@ -471,7 +473,6 @@ export default function Home() {
               {!showModal && (
                 <div className="absolute right-6 top-6 flex flex-col gap-4 z-[80]">
                   <button onClick={() => setShowOptions(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Settings size={26}/></button>
-                  {/* GÜNCEL: Filtreler için login kontrolü */}
                   <button onClick={() => dbUserId ? setShowGenderFilter(true) : setShowLoginRequired(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><User size={26}/></button>
                   <button onClick={() => dbUserId ? setShowCountryFilter(true) : setShowLoginRequired(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Globe size={26}/></button>
                 </div>
