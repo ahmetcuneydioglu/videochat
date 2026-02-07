@@ -474,11 +474,13 @@ const handleLike = () => {
               ))}
 
               <div className="absolute top-6 left-6 z-[60] flex flex-col gap-3">
+
+
                 {/* STRANGER INFO BÜYÜTÜLDÜ */}
                 {!isSearching && isActive && partnerId && (
-                  <div className="flex items-center gap-4 bg-black/60 backdrop-blur-3xl border border-white/10 pl-2 pr-6 py-2 rounded-2xl shadow-2xl animate-in slide-in-from-left-8">
+                  <div className="absolute top-0 left-0 flex items-center gap-3 bg-black/60 backdrop-blur-2xl border-r border-b border-white/10 pl-4 pr-6 py-3 rounded-br-3xl shadow-2xl animate-in slide-in-from-top-4">
                     {/* Bayrak Alanı */}
-                    <div className="w-12 h-12 flex items-center justify-center bg-white/5 rounded-xl text-3xl shadow-inner">
+                    <div className="w-11 h-11 flex items-center justify-center bg-white/5 rounded-xl text-2xl shrink-0">
                       {partnerFlag}
                     </div>
 
@@ -508,6 +510,8 @@ const handleLike = () => {
                     </div>
                   </div>
                 )}
+
+
                 {userAvatar && !showModal && (
                   <div className="flex items-center gap-2 bg-white/5 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit animate-in fade-in slide-in-from-left-4">
                      <img src={userAvatar} alt="Profile" className="w-8 h-8 rounded-full border border-white/20 object-cover" onError={(e) => (e.currentTarget.src = "https://ui-avatars.com/api/?name=" + userName + "&background=0D8ABC&color=fff")} />
@@ -564,12 +568,9 @@ const handleLike = () => {
 
               {/* ALT KONTROL BARI - YENİ DÜZENLEME */}
               {!showModal && (
-                <div className="md:hidden absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-center justify-between px-8 z-[100]">
+                <div className="md:hidden absolute bottom-0 left-0 w-full h-20 bg-black/80 backdrop-blur-md border-t border-white/10 flex items-center justify-between px-10 z-[100]">
                   {/* Durdur/Başlat Butonu */}
-                  <button 
-                    onClick={toggleActive} 
-                    className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all active:scale-90 ${isActive ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}
-                  >
+                  <button onClick={toggleActive} className="text-red-500 active:scale-90 transition-transform">
                     {isActive ? <Square size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
                   </button>
 
@@ -577,21 +578,17 @@ const handleLike = () => {
                   <button 
                     onClick={() => handleNext()} 
                     disabled={!isActive} 
-                    className="bg-blue-600 text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] disabled:opacity-30 flex items-center gap-3 active:scale-95 transition-all shadow-2xl shadow-blue-500/40"
+                    className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-blue-500/20"
                   >
-                    <SkipForward size={18} fill="currentColor" /> NEXT
+                    NEXT
                   </button>
 
                   {/* Mesaj Butonu */}
-                  <button 
-                    onClick={() => setIsMobileInputActive(!isMobileInputActive)} 
-                    disabled={!isActive || !partnerId} 
-                    className={`w-12 h-12 rounded-2xl flex items-center justify-center active:scale-90 ${isMobileInputActive ? 'bg-blue-600 text-white' : 'bg-white/10 text-white'}`}
-                  >
-                    <MessageCircle size={24} />
-                  </button>
-                </div>
-              )}
+                  <button onClick={() => setIsMobileInputActive(!isMobileInputActive)} className="text-white active:scale-90 transition-transform">
+                  <MessageCircle size={24} />
+                </button>
+                    </div>
+                    )}
 
               {isMobileInputActive && isActive && (
                 <div className="md:hidden absolute bottom-24 left-6 right-6 z-[110] animate-in slide-in-from-bottom-2 duration-200">
