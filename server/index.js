@@ -201,7 +201,7 @@ io.on('connection', async (socket) => {
 }); */
 
 
-socket.on('like_partner', async ({ targetId, increaseCounter }) => {
+socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLikes }) => {
     const me = userDetails.get(socket.id);
     const partner = userDetails.get(targetId);
 
@@ -226,7 +226,7 @@ socket.on('like_partner', async ({ targetId, increaseCounter }) => {
     // 2. GÖRSEL EFEKT (Soket Yayını)
     // BU SATIR IF BLOĞUNUN DIŞINDA OLMALI!
     // Partner ister kayıtlı olsun ister kayıtsız, bu sinyal ona gider ve kalpler uçar.
-    io.to(targetId).emit('receive_like', { newLikes: partner.likes });
+    io.to(targetId).emit('receive_like', { newLikes: partner.likes, senderSessionLikes: currentSessionLikes });
 });
 
   socket.on('stop_search', () => {

@@ -39,6 +39,8 @@ export default function Home() {
   const [showGenderFilter, setShowGenderFilter] = useState(false);
   const [showCountryFilter, setShowCountryFilter] = useState(false);
   const [showLoginRequired, setShowLoginRequired] = useState(false); 
+  const [sessionLikes, setSessionLikes] = useState(0); // Bu eşleşmede kaç kere bastığını tutar
+  const [partnerSessionLikes, setPartnerSessionLikes] = useState(0);
   
   const [cameraOn, setCameraOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
@@ -59,6 +61,7 @@ export default function Home() {
   const [inputText, setInputText] = useState("");
   const [isMobileInputActive, setIsMobileInputActive] = useState(false);
   const [matchNotification, setMatchNotification] = useState<string | null>(null);
+  const [userCountry, setUserCountry] = useState<string>("tr"); // Başlangıçta TR olarak tanımlıyoruz
 
   const [dbUserId, setDbUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
@@ -88,6 +91,21 @@ export default function Home() {
     allCountries.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())), 
     [searchTerm, allCountries]
   );
+
+  useEffect(() => {
+  const fetchUserCountry = async () => {
+    try {
+      const response = await fetch('https://ipapi.co/json/');
+      const data = await response.json();
+      if (data.country_code) {
+        setUserCountry(data.country_code.toLowerCase());
+      }
+    } catch (error) {
+      console.error("Kendi ülke bilgim alınamadı:", error);
+    }
+  };
+  fetchUserCountry();
+}, []);
 
   useEffect(() => {
     setIsMounted(true);
@@ -161,9 +179,16 @@ export default function Home() {
     });
 
     socket.on("receive_like", (data) => {
-      setPartnerLikes(data.newLikes);
+      // Veritabanındaki toplam beğeni (Sol üst kart için)
+      if (data.newLikes !== undefined) setPartnerLikes(data.newLikes);
+      
+      // Stranger'ın (Senin) o anki tıklama sayısı (Balon için)
+      if (data.senderSessionLikes) {
+        setPartnerSessionLikes(data.senderSessionLikes);
+      }
+
       setMatchNotification("Someone loved your vibe! ❤️");
-      triggerHeartAnimation(); // Karşı taraf beğendiğinde de renkli kalpler uçuşsun
+      triggerHeartAnimation(); 
       setTimeout(() => setMatchNotification(null), 3000);
     });
 
@@ -193,6 +218,8 @@ export default function Home() {
     setPartnerGender(null);
     setPartnerLikes(0);
     setHasLiked(false);
+    setSessionLikes(0); // Yeni partnerde sayacı sıfırla
+    setPartnerSessionLikes(0);
   };
 
   function initiatePeer(targetId: string, initiator: boolean) {
@@ -258,7 +285,8 @@ export default function Home() {
 };
  */
 
-const handleLike = () => {
+/* sağ alt sayaçsız kod */
+/* const handleLike = () => {
   // Her basışta kendi ekranında uçur (hissiyat için önemli)
   triggerHeartAnimation();
 
@@ -279,7 +307,30 @@ const handleLike = () => {
     }
   }
 };
+ */
 
+  const handleLike = () => {
+    triggerHeartAnimation();
+    
+    // State'in güncellenmesini beklemeden taze değişken oluşturuyoruz
+    const updatedLikes = sessionLikes + 1; 
+    setSessionLikes(updatedLikes);
+
+    if (partnerId) {
+      const shouldIncrease = dbUserId ? !hasLiked : false;
+
+      // socket'e sessionLikes yerine updatedLikes gönderiyoruz
+      socket.emit("like_partner", { 
+        targetId: partnerId, 
+        increaseCounter: shouldIncrease,
+        currentSessionLikes: updatedLikes 
+      });
+
+      if (!hasLiked && dbUserId) {
+        setHasLiked(true);
+      }
+    }
+  };
 
   const handleReport = () => {
     if (partnerId) {
@@ -476,57 +527,67 @@ const handleLike = () => {
               ))}
 
               {/* STRANGER INFO & KENDİ AVATARIN - TAVANA TAM SIFIR */}
-            <div className="absolute top-0 left-0 z-[120] flex flex-col gap-0">
-              {!isSearching && isActive && partnerId && (
-                <div className="flex items-center gap-1 bg-zinc-950 backdrop-blur-3xl border-r border-b border-white/10 pl-1 pr-4 py-1 rounded-br-[32px] shadow-2xl animate-in slide-in-from-top-10 duration-500">
-                  {/* Bayrak */}
-                  <div className="w-9 h-9 flex items-center justify-center bg-white/5 rounded-2xl text-xl shrink-0">
-                    {partnerFlag}
-                  </div>
+<div className="absolute top-0 left-0 z-[120] flex flex-col gap-0">
+  {!isSearching && isActive && partnerId && (
+    <div className="relative group">
+      {/* ÜST BİLGİ KARTI */}
+      <div className="flex items-center gap-1 bg-zinc-950 backdrop-blur-3xl border-r border-b border-white/10 pl-1 pr-4 py-1 rounded-br-[32px] shadow-2xl animate-in slide-in-from-top-10 duration-500">
+        {/* Bayrak */}
+        <div className="w-9 h-9 flex items-center justify-center bg-white/5 rounded-2xl text-xl shrink-0">
+          {partnerFlag}
+        </div>
 
-                  <div className="flex flex-col justify-center gap-0.5">
-                    <div className="flex items-center gap-1">
-                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.8)]"></div>
-                      <span className="text-[9px] font-black text-white uppercase tracking-tight leading-none">{partnerCountry}</span>
-                    </div>
-                    
-                    {/* KALP SAYACI */}
-                    <div 
-                      onClick={handleLike}
-                      className="flex items-center gap-1.5 bg-pink-500/20 px-2 py-0.5 rounded-xl cursor-pointer hover:bg-pink-500/30 transition-all border border-pink-500/10"
-                    >
-                      <Heart size={8} className="text-pink-500 fill-pink-500" />
-                      <span className="text-xm font-black text-pink-500 tabular-nums leading-none">
-                        {partnerLikes}
-                      </span>
-                    </div>
-                  </div>
+        <div className="flex flex-col justify-center gap-0.5">
+          <div className="flex items-center gap-1">
+            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.8)]"></div>
+            <span className="text-[9px] font-black text-white uppercase tracking-tight leading-none">{partnerCountry}</span>
+          </div>
+          
+          {/* KALP SAYACI */}
+          <div 
+            onClick={handleLike}
+            className="flex items-center gap-1.5 bg-pink-500/20 px-2 py-0.5 rounded-xl cursor-pointer hover:bg-pink-500/30 transition-all border border-pink-500/10"
+          >
+            <Heart size={8} className="text-pink-500 fill-pink-500" />
+            <span className="text-xm font-black text-pink-500 tabular-nums leading-none">
+              {partnerLikes}
+            </span>
+          </div>
+        </div>
 
-                  <div className="h-6 w-[1px] bg-white/10 mx-0.5"></div>
+        <div className="h-6 w-[1px] bg-white/10 mx-0.5"></div>
 
-                  {/* Cinsiyet */}
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-lg ${partnerGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                    <span className="text-lg font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
-                  </div>
-                </div>
-              )}
+        {/* Cinsiyet */}
+        <div className={`flex items-center justify-center w-8 h-8 rounded-lg ${partnerGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>
+          <span className="text-lg font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
+        </div>
+      </div>
 
-              {/* KENDİ AVATARIN - KARTIN HEMEN ALTINA VEYA İÇİNE HİZALANDI */}
-              {userAvatar && !showModal && (
-                <div className="ml-3 mt-2 flex items-center gap-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit animate-in fade-in slide-in-from-left-4">
-                  <img 
-                    src={userAvatar} 
-                    alt="You" 
-                    className="w-8 h-8 rounded-full border-2 border-blue-500/40 object-cover" 
-                    onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${userName}&background=0D8ABC&color=fff`)}
-                  />
-                  <span className="text-[9px] font-black pr-3 text-white uppercase tracking-widest">YOU</span>
-                </div>
-              )}
-            </div>
+      {/* STRANGER'DAN GELEN CANLI KALP SAYACI (BALON) */}
+      {partnerSessionLikes > 0 && (
+    <div className="absolute -bottom-10 left-2 animate-bounce bg-pink-600 px-3 py-1.5 rounded-full border border-white/20 shadow-[0_0_20px_rgba(219,39,119,0.6)] z-[200]">
+    <span className="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2">
+      <Heart size={12} className="fill-white animate-pulse" />
+      {partnerSessionLikes}
+    </span>
+  </div>
+)}
+    </div>
+  )}
 
-
-
+  {/* KENDİ AVATARIN - BALON VARSA mt-12, YOKSA mt-2 OLACAK ŞEKİLDE AYARLANDI */}
+  {userAvatar && !showModal && (
+    <div className={`ml-3 ${partnerSessionLikes > 0 ? 'mt-12' : 'mt-2'} transition-all duration-300 flex items-center gap-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit animate-in fade-in slide-in-from-left-4`}>
+      <img 
+        src={userAvatar} 
+        alt="You" 
+        className="w-8 h-8 rounded-full border-2 border-blue-500/40 object-cover" 
+        onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${userName}&background=0D8ABC&color=fff`)}
+      />
+      <span className="text-[9px] font-black pr-3 text-white uppercase tracking-widest">YOU</span>
+    </div>
+  )}
+</div>
 
 
               {!isSearching && isActive && partnerId && (
@@ -536,6 +597,13 @@ const handleLike = () => {
                   </button>
                   <button onClick={handleLike} className="w-10 h-10 bg-pink-600/20 backdrop-blur-2xl border border-pink-500/30 rounded-full flex items-center justify-center text-pink-500 shadow-2xl shadow-pink-500/20 active:scale-90 transition-all group">
                     <Heart size={24} className="group-hover:fill-pink-500 transition-all" />
+
+                    {/* YEREL SAYAÇ BALONU */}
+                      {sessionLikes > 0 && (
+                        <div className="absolute -top-2 -right-1 bg-pink-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-lg animate-in zoom-in duration-200">
+                          {sessionLikes}
+                        </div>
+                      )}
                   </button>
                 </div>
               )}
@@ -559,9 +627,24 @@ const handleLike = () => {
               {/* sağ ikonların değişmesi için aşağı tarafla oyna */}
               {!showModal && (
                 <div className="absolute right-1 top-6 flex flex-col gap-3 z-[80]">
-                  <button onClick={() => setShowOptions(true)} className="w-10 h-10 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Settings size={26}/></button>
-                  <button onClick={() => dbUserId ? setShowGenderFilter(true) : setShowLoginRequired(true)} className="w-10 h-10 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><User size={26}/></button>
-                  <button onClick={() => dbUserId ? setShowCountryFilter(true) : setShowLoginRequired(true)} className="w-10 h-10 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Globe size={26}/></button>
+                  <button onClick={() => setShowOptions(true)} className="w-10 h-10 bg-black/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Settings size={26}/></button>
+                  <button onClick={() => dbUserId ? setShowGenderFilter(true) : setShowLoginRequired(true)} className="w-10 h-10 bg-black/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><User size={26}/></button>
+                  {/* BÖLGE/BAYRAK BUTONU - YENİ DÜZENLEME */}
+    {/* BÖLGE/BAYRAK BUTONU - KENDİ ÜLKESİNİ ÖNCELİKLENDİREN YAPI */}
+    {/* BÖLGE/BAYRAK BUTONU */}
+<button 
+  onClick={() => dbUserId ? setShowCountryFilter(true) : setShowLoginRequired(true)} 
+  className="w-10 h-10 bg-black/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all overflow-hidden group"
+>
+  <span className="text-2xl group-active:scale-110 transition-transform">
+    {/* Eğer kullanıcı bir filtre seçtiyse onu göster, seçmediyse (all ise) kendi ülkesini göster */}
+    {selectedCountry && selectedCountry !== "all" ? (
+      getFlagEmoji(selectedCountry)
+    ) : (
+      getFlagEmoji(userCountry)
+    )}
+  </span>
+</button>
                 </div>
               )}
 
