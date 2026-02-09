@@ -33,6 +33,10 @@ export default function Home() {
   const streamRef = useRef<MediaStream | null>(null);
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Son 3 partnerin bilgilerini ve anlık ekran görüntülerini tutar
+  const [reportHistory, setReportHistory] = useState<{ id: string, country: string, flag: string, screenshot: string }[]>([]);
+  const [showReportModal, setShowReportModal] = useState(false);
+
   const [isActive, setIsActive] = useState(false);
   const [showModal, setShowModal] = useState(true);
   const [showOptions, setShowOptions] = useState(false);
@@ -210,6 +214,29 @@ export default function Home() {
   }, [isMounted, allCountries, isActive]);
 
   const cleanUpPeer = () => {
+
+          // Raporlama için partner bilgilerini ve ekran görüntüsünü al
+          if (partnerId && remoteVideoRef.current) {
+          const canvas = document.createElement("canvas");
+          canvas.width = remoteVideoRef.current.videoWidth;
+          canvas.height = remoteVideoRef.current.videoHeight;
+          canvas.getContext("2d")?.drawImage(remoteVideoRef.current, 0, 0);
+          const screenshot = canvas.toDataURL("image/jpeg", 0.4);
+
+          const newEntry = { 
+            id: partnerId, 
+            country: partnerCountry || "Unknown", 
+            flag: partnerFlag || "🌐", 
+            screenshot 
+          };
+
+          setReportHistory(prev => {
+            const updated = [newEntry, ...prev];
+            return updated.slice(0, 3); // Sadece son 3 kişiyi tut
+          });
+        }
+
+
     if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     setPartnerId(null);
@@ -332,7 +359,7 @@ export default function Home() {
     }
   };
 
-  const handleReport = () => {
+  /* const handleReport = () => {
     if (partnerId) {
       const canvas = document.createElement("canvas");
       if (remoteVideoRef.current) {
@@ -355,7 +382,52 @@ export default function Home() {
         });
       }
     }
-  };
+  }; */
+
+  const handleReport = () => {
+  // Eğer şu an biriyle eşleşmişsek, onun görüntüsünü de havuza ekleyelim ki listede çıksın
+  if (partnerId && remoteVideoRef.current) {
+    const canvas = document.createElement("canvas");
+    canvas.width = remoteVideoRef.current.videoWidth;
+    canvas.height = remoteVideoRef.current.videoHeight;
+    canvas.getContext("2d")?.drawImage(remoteVideoRef.current, 0, 0);
+    const screenshot = canvas.toDataURL("image/jpeg", 0.4);
+
+    const currentEntry = { 
+      id: partnerId, 
+      country: partnerCountry || "Unknown", 
+      flag: partnerFlag || "🌐", 
+      screenshot 
+    };
+
+    // Mevcut kişiyi listenin başına ekle (eğer listede yoksa)
+    setReportHistory(prev => {
+      if (prev.find(p => p.id === partnerId)) return prev;
+      return [currentEntry, ...prev].slice(0, 3);
+    });
+  }
+  
+  // Modalı aç
+  setShowReportModal(true);
+};
+
+
+const sendFinalReport = (targetUser: { id: string, screenshot: string }) => {
+  fetch("https://videochat-1qxi.onrender.com/api/report-user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ 
+      reporterId: socket.id, 
+      reportedId: targetUser.id, 
+      screenshot: targetUser.screenshot 
+    })
+  }).then(() => {
+    alert("Kullanıcı başarıyla bildirildi!");
+    setShowReportModal(false);
+    // Eğer raporlanan kişi şu anki aktif partner ise bir sonrakine geç
+    if (targetUser.id === partnerId) handleNext();
+  });
+};
 
   const toggleActive = () => {
     const nextState = !isActive;
@@ -527,8 +599,8 @@ export default function Home() {
               ))}
 
               {/* STRANGER INFO & KENDİ AVATARIN - TAVANA TAM SIFIR */}
-<div className="absolute top-0 left-0 z-[120] flex flex-col gap-0">
-  {!isSearching && isActive && partnerId && (
+    <div className="absolute top-0 left-0 z-[120] flex flex-col gap-0">
+    {!isSearching && isActive && partnerId && (
     <div className="relative group">
       {/* ÜST BİLGİ KARTI */}
       <div className="flex items-center gap-1 bg-zinc-950 backdrop-blur-3xl border-r border-b border-white/10 pl-1 pr-4 py-1 rounded-br-[32px] shadow-2xl animate-in slide-in-from-top-10 duration-500">
@@ -572,6 +644,60 @@ export default function Home() {
     </span>
   </div>
 )}
+              {/* REPORT AÇILIŞ MODALI */}
+
+              {showReportModal && (
+            <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-300">
+              <div className="w-full max-w-sm bg-[#121214] border border-white/10 rounded-[40px] p-6 shadow-2xl relative overflow-hidden">
+                
+                {/* Başlık Bölümü */}
+                <div className="text-center mb-8">
+                  <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-6 md:hidden"></div> {/* Mobil tutamaç */}
+                  <h3 className="text-xl font-black italic tracking-tighter text-white uppercase italic">
+                    Kötüye Kullanımı Bildir
+                  </h3>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2">
+                    Şikayet etmek istediğiniz kişiyi seçin
+                  </p>
+                </div>
+
+                {/* Grid Yapısı - Tam Ortalı */}
+                <div className="grid grid-cols-3 gap-3 mb-8">
+                  {reportHistory.map((item, index) => (
+                    <div 
+                      key={index} 
+                      className="relative aspect-[3/4] rounded-2xl overflow-hidden border-2 border-transparent hover:border-red-500 active:scale-95 transition-all shadow-lg cursor-pointer"
+                      onClick={() => sendFinalReport(item)}
+                    >
+                      <img src={item.screenshot} className="w-full h-full object-cover" alt="History" />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-center">
+                        <span className="text-[10px]">{item.flag}</span>
+                      </div>
+                      {/* Hızlı Seçim İkonu */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-red-600/20 opacity-0 hover:opacity-100 transition-opacity">
+                        <ShieldAlert size={20} className="text-white drop-shadow-lg" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Butonlar */}
+                <div className="space-y-3">
+                  <button 
+                    onClick={() => setShowReportModal(false)}
+                    className="w-full py-4 rounded-2xl bg-white/5 text-zinc-400 font-black uppercase text-[10px] tracking-[0.2em] hover:bg-white/10 active:scale-95 transition-all"
+                  >
+                    Vazgeç
+                  </button>
+                </div>
+
+                {/* Arka Plan Dekorasyonu */}
+                <div className="absolute -top-10 -right-10 w-32 h-32 bg-red-600/10 blur-[50px] rounded-full pointer-events-none"></div>
+              </div>
+            </div>
+        )}
+
+
     </div>
   )}
 
