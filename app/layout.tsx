@@ -32,7 +32,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="tr"> {/* Dil seçeneğini tr yaptık */}
+    <html lang="tr"> {}
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         style={{ position: 'fixed', width: '100%', height: '100%', overflow: 'hidden' }}

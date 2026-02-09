@@ -383,6 +383,8 @@ const handleLike = () => {
           </div>
         )}
 
+        
+
         {showCountryFilter && (
           <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <div className="bg-[#121214] border border-white/10 w-full max-w-sm rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95">
@@ -476,7 +478,7 @@ const handleLike = () => {
               {/* STRANGER INFO & KENDİ AVATARIN - TAVANA TAM SIFIR */}
             <div className="absolute top-0 left-0 z-[120] flex flex-col gap-0">
               {!isSearching && isActive && partnerId && (
-                <div className="flex items-center gap-3 bg-black/70 backdrop-blur-3xl border-r border-b border-white/10 pl-5 pr-7 py-2 rounded-br-[32px] shadow-2xl animate-in slide-in-from-top-10 duration-500">
+                <div className="flex items-center gap-1 bg-zinc-950 backdrop-blur-3xl border-r border-b border-white/10 pl-1 pr-4 py-1 rounded-br-[32px] shadow-2xl animate-in slide-in-from-top-10 duration-500">
                   {/* Bayrak */}
                   <div className="w-9 h-9 flex items-center justify-center bg-white/5 rounded-2xl text-xl shrink-0">
                     {partnerFlag}
@@ -485,7 +487,7 @@ const handleLike = () => {
                   <div className="flex flex-col justify-center gap-0.5">
                     <div className="flex items-center gap-1">
                       <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.8)]"></div>
-                      <span className="text-[11px] font-black text-white uppercase tracking-tight leading-none">{partnerCountry}</span>
+                      <span className="text-[9px] font-black text-white uppercase tracking-tight leading-none">{partnerCountry}</span>
                     </div>
                     
                     {/* KALP SAYACI */}
@@ -493,7 +495,7 @@ const handleLike = () => {
                       onClick={handleLike}
                       className="flex items-center gap-1.5 bg-pink-500/20 px-2 py-0.5 rounded-xl cursor-pointer hover:bg-pink-500/30 transition-all border border-pink-500/10"
                     >
-                      <Heart size={10} className="text-pink-500 fill-pink-500" />
+                      <Heart size={8} className="text-pink-500 fill-pink-500" />
                       <span className="text-xm font-black text-pink-500 tabular-nums leading-none">
                         {partnerLikes}
                       </span>
@@ -528,12 +530,12 @@ const handleLike = () => {
 
 
               {!isSearching && isActive && partnerId && (
-                <div className="absolute bottom-24 md:bottom-6 right-6 flex flex-col gap-3 z-[70]">
-                  <button onClick={handleReport} className="w-12 h-12 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center text-zinc-400 hover:text-red-500 transition-all active:scale-90">
+                <div className="absolute bottom-24 md:bottom-6 right-1.5 flex flex-col gap-1 z-[70]">
+                  <button onClick={handleReport} className="w-10 h-10 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center text-zinc-400 hover:text-red-500 transition-all active:scale-90">
                     <ShieldAlert size={24} />
                   </button>
-                  <button onClick={handleLike} className="w-14 h-14 bg-pink-600/20 backdrop-blur-2xl border border-pink-500/30 rounded-full flex items-center justify-center text-pink-500 shadow-2xl shadow-pink-500/20 active:scale-90 transition-all group">
-                    <Heart size={28} className="group-hover:fill-pink-500 transition-all" />
+                  <button onClick={handleLike} className="w-10 h-10 bg-pink-600/20 backdrop-blur-2xl border border-pink-500/30 rounded-full flex items-center justify-center text-pink-500 shadow-2xl shadow-pink-500/20 active:scale-90 transition-all group">
+                    <Heart size={24} className="group-hover:fill-pink-500 transition-all" />
                   </button>
                 </div>
               )}
@@ -554,12 +556,12 @@ const handleLike = () => {
 
             <div className="absolute bottom-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900">
               <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
-              
+              {/* sağ ikonların değişmesi için aşağı tarafla oyna */}
               {!showModal && (
-                <div className="absolute right-6 top-6 flex flex-col gap-4 z-[80]">
-                  <button onClick={() => setShowOptions(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Settings size={26}/></button>
-                  <button onClick={() => dbUserId ? setShowGenderFilter(true) : setShowLoginRequired(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><User size={26}/></button>
-                  <button onClick={() => dbUserId ? setShowCountryFilter(true) : setShowLoginRequired(true)} className="w-14 h-14 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Globe size={26}/></button>
+                <div className="absolute right-1 top-6 flex flex-col gap-3 z-[80]">
+                  <button onClick={() => setShowOptions(true)} className="w-10 h-10 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Settings size={26}/></button>
+                  <button onClick={() => dbUserId ? setShowGenderFilter(true) : setShowLoginRequired(true)} className="w-10 h-10 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><User size={26}/></button>
+                  <button onClick={() => dbUserId ? setShowCountryFilter(true) : setShowLoginRequired(true)} className="w-10 h-10 bg-white/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Globe size={26}/></button>
                 </div>
               )}
 
@@ -575,20 +577,20 @@ const handleLike = () => {
 
              {/* ALT KONTROL BARI - TABANA TAM SIFIR */}
             {!showModal && (
-              <div className="md:hidden absolute bottom-0 left-0 w-full h-28 bg-gradient-to-t from-black via-black/80 to-transparent flex items-center justify-between px-10 z-[100] pb-4">
+              <div className="md:hidden absolute bottom-0 left-0 w-full h-16 bg-gradient-to-t from-black via-black/80 to-transparent flex items-center justify-between px-10 z-[100] pb-4">
                 {/* Durdur/Başlat */}
                 <button 
                   onClick={toggleActive} 
                   className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all active:scale-90 shadow-lg ${isActive ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}
                 >
-                  {isActive ? <Square size={26} fill="currentColor" /> : <Play size={26} fill="currentColor" />}
+                  {isActive ? <Square size={26} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
                 </button>
 
                 {/* NEXT Butonu */}
                 <button 
                   onClick={() => handleNext()} 
                   disabled={!isActive} 
-                  className="bg-blue-600 text-white px-12 py-4 rounded-[20px] font-black text-sm uppercase tracking-[0.2em] disabled:opacity-30 flex items-center gap-3 active:scale-95 transition-all shadow-[0_0_30px_rgba(37,99,235,0.4)]"
+                  className="bg-blue-600 text-white px-16 py-4 rounded-[20px] font-black text-sm uppercase tracking-[0.2em] disabled:opacity-30 flex items-center gap-3 active:scale-95 transition-all shadow-[0_0_30px_rgba(37,99,235,0.4)]"
                 >
                   <SkipForward size={20} fill="currentColor" /> NEXT
                 </button>
