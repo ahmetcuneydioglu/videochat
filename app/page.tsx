@@ -23,6 +23,14 @@ const socket = io("https://videochat-1qxi.onrender.com/", {
 
 const GOOGLE_CLIENT_ID = "18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com";
 
+// TypeScript için Tip Tanımlaması
+interface ReportItem {
+  id: string;
+  country: string;
+  flag: string;
+  screenshot: string;
+}
+
 export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -31,10 +39,9 @@ export default function Home() {
   const mobileChatEndRef = useRef<HTMLDivElement>(null);
   const peerRef = useRef<Peer.Instance | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Son 3 partnerin bilgilerini ve anlık ekran görüntülerini tutar
-  const [reportHistory, setReportHistory] = useState<{ id: string, country: string, flag: string, screenshot: string }[]>([]);
+  const [reportHistory, setReportHistory] = useState<ReportItem[]>([]);
   const [showReportModal, setShowReportModal] = useState(false);
 
   const [isActive, setIsActive] = useState(false);
@@ -43,7 +50,7 @@ export default function Home() {
   const [showGenderFilter, setShowGenderFilter] = useState(false);
   const [showCountryFilter, setShowCountryFilter] = useState(false);
   const [showLoginRequired, setShowLoginRequired] = useState(false); 
-  const [sessionLikes, setSessionLikes] = useState(0); // Bu eşleşmede kaç kere bastığını tutar
+  const [sessionLikes, setSessionLikes] = useState(0); 
   const [partnerSessionLikes, setPartnerSessionLikes] = useState(0);
   
   const [cameraOn, setCameraOn] = useState(true);
@@ -65,16 +72,13 @@ export default function Home() {
   const [inputText, setInputText] = useState("");
   const [isMobileInputActive, setIsMobileInputActive] = useState(false);
   const [matchNotification, setMatchNotification] = useState<string | null>(null);
-  const [userCountry, setUserCountry] = useState<string>("tr"); // Başlangıçta TR olarak tanımlıyoruz
+  const [userCountry, setUserCountry] = useState<string>("tr"); 
 
   const [dbUserId, setDbUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
   
-  // YENİ: Beğeni Kontrolü
   const [hasLiked, setHasLiked] = useState(false); 
-
-  // YENİ: Renkli Kalpler İçin State (Color eklendi)
   const [flyingHearts, setFlyingHearts] = useState<{ id: number; left: number; delay: number; color: string }[]>([]);
 
   const getFlagEmoji = (countryCode: string) => {
@@ -97,19 +101,19 @@ export default function Home() {
   );
 
   useEffect(() => {
-  const fetchUserCountry = async () => {
-    try {
-      const response = await fetch('https://ipapi.co/json/');
-      const data = await response.json();
-      if (data.country_code) {
-        setUserCountry(data.country_code.toLowerCase());
+    const fetchUserCountry = async () => {
+      try {
+        const response = await fetch('https://ipapi.co/json/');
+        const data = await response.json();
+        if (data.country_code) {
+          setUserCountry(data.country_code.toLowerCase());
+        }
+      } catch (error) {
+        console.error("Kendi ülke bilgim alınamadı:", error);
       }
-    } catch (error) {
-      console.error("Kendi ülke bilgim alınamadı:", error);
-    }
-  };
-  fetchUserCountry();
-}, []);
+    };
+    fetchUserCountry();
+  }, []);
 
   useEffect(() => {
     setIsMounted(true);
@@ -140,19 +144,17 @@ export default function Home() {
     } catch (err) { console.error("Media error:", err); }
   };
 
-  // YENİ: Rastgele Kalp Rengi Seçici
   const getRandomHeartColor = () => {
     const colors = ["text-blue-500", "text-yellow-400", "text-purple-500", "text-pink-500", "text-red-500"];
     return colors[Math.floor(Math.random() * colors.length)];
   };
 
-  // KALP ANİMASYON FONKSİYONU
   const triggerHeartAnimation = () => {
     const newHearts = Array.from({ length: 5 }).map((_, i) => ({
       id: Date.now() + i,
       left: Math.random() * 80 + 10,
       delay: Math.random() * 0.5,
-      color: getRandomHeartColor() // Renk ataması
+      color: getRandomHeartColor() 
     }));
     setFlyingHearts(prev => [...prev, ...newHearts]);
     setTimeout(() => {
@@ -169,7 +171,7 @@ export default function Home() {
         setPartnerId(data.partnerId); 
         setPartnerGender(data.partnerGender || 'male'); 
         setPartnerLikes(data.partnerLikes || 0); 
-        setHasLiked(false); // Yeni partnerde beğeniyi sıfırla
+        setHasLiked(false); 
         
         const countryCode = (data.country || "UN").toUpperCase();
         const countryObj = allCountries.find(c => c.id === countryCode);
@@ -183,14 +185,10 @@ export default function Home() {
     });
 
     socket.on("receive_like", (data) => {
-      // Veritabanındaki toplam beğeni (Sol üst kart için)
       if (data.newLikes !== undefined) setPartnerLikes(data.newLikes);
-      
-      // Stranger'ın (Senin) o anki tıklama sayısı (Balon için)
       if (data.senderSessionLikes) {
         setPartnerSessionLikes(data.senderSessionLikes);
       }
-
       setMatchNotification("Someone loved your vibe! ❤️");
       triggerHeartAnimation(); 
       setTimeout(() => setMatchNotification(null), 3000);
@@ -213,29 +211,38 @@ export default function Home() {
     };
   }, [isMounted, allCountries, isActive]);
 
-  const cleanUpPeer = () => {
+  // --- YARDIMCI FONKSİYON: Partneri Havuza Ekle ---
+  const captureAndAddToHistory = () => {
+    if (partnerId && remoteVideoRef.current) {
+        try {
+            const canvas = document.createElement("canvas");
+            canvas.width = remoteVideoRef.current.videoWidth;
+            canvas.height = remoteVideoRef.current.videoHeight;
+            canvas.getContext("2d")?.drawImage(remoteVideoRef.current, 0, 0);
+            const screenshot = canvas.toDataURL("image/jpeg", 0.4);
 
-          // Raporlama için partner bilgilerini ve ekran görüntüsünü al
-          if (partnerId && remoteVideoRef.current) {
-          const canvas = document.createElement("canvas");
-          canvas.width = remoteVideoRef.current.videoWidth;
-          canvas.height = remoteVideoRef.current.videoHeight;
-          canvas.getContext("2d")?.drawImage(remoteVideoRef.current, 0, 0);
-          const screenshot = canvas.toDataURL("image/jpeg", 0.4);
+            const newEntry: ReportItem = { 
+              id: partnerId, 
+              country: partnerCountry || "Unknown", 
+              flag: partnerFlag || "🌐", 
+              screenshot 
+            };
 
-          const newEntry = { 
-            id: partnerId, 
-            country: partnerCountry || "Unknown", 
-            flag: partnerFlag || "🌐", 
-            screenshot 
-          };
-
-          setReportHistory(prev => {
-            const updated = [newEntry, ...prev];
-            return updated.slice(0, 3); // Sadece son 3 kişiyi tut
-          });
+            setReportHistory(prev => {
+                // Eğer zaten listede varsa tekrar ekleme
+                if (prev.some(p => p.id === partnerId)) return prev;
+                // En başa ekle, son 3'ü tut
+                return [newEntry, ...prev].slice(0, 3);
+            });
+        } catch (e) {
+            console.error("Screenshot capture failed", e);
         }
+    }
+  };
 
+  const cleanUpPeer = () => {
+    // Partner ayrılırken görüntüsünü kaydet
+    captureAndAddToHistory();
 
     if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
@@ -245,7 +252,7 @@ export default function Home() {
     setPartnerGender(null);
     setPartnerLikes(0);
     setHasLiked(false);
-    setSessionLikes(0); // Yeni partnerde sayacı sıfırla
+    setSessionLikes(0); 
     setPartnerSessionLikes(0);
   };
 
@@ -268,166 +275,49 @@ export default function Home() {
     socket.emit("find_partner", { myGender, searchGender, selectedCountry });
   };
 
-  // HANDLE LIKE GÜNCELLENDİ: PERISCOPE MANTIĞI
-  //Sadece tek kalp için bu fonksiyon çalışacak
-  /* const handleLike = () => {
-    if (!dbUserId) {
-      setShowLoginRequired(true);
-      return;
-    }
-    
-    // 1. Görsel Şölen: Her basışta kalpler uçar (Fidget etkisi)
-    triggerHeartAnimation();
-
-    // 2. Sayaç Kontrolü: Sadece ilk basışta veritabanına gider
-    if (partnerId) {
-      socket.emit("like_partner", { targetId: partnerId });
-      setHasLiked(true); // Hakkını kullandı olarak işaretle
-    }
-  }; */
-
-  //Aşağdaki kod beğeni içinde login isteyen kod parçacığı
-  /* const handleLike = () => {
-  if (!dbUserId) {
-    setShowLoginRequired(true);
-    return;
-  }
-  
-  // 1. Kendi ekranımızda kalpleri uçur (Her zaman)
-  triggerHeartAnimation();
-
-  if (partnerId) {
-    // 2. Karşı tarafa sinyali gönder
-    // Sinyal içine 'isFirstTime' bilgisini ekliyoruz
-    socket.emit("like_partner", { 
-      targetId: partnerId, 
-      increaseCounter: !hasLiked // Eğer daha önce beğenmediyse true gider, beğendiyse false
-    });
-
-    // 3. İlk basıştan sonra hakkımızı dolduruyoruz
-    if (!hasLiked) {
-      setHasLiked(true);
-    }
-  }
-};
- */
-
-/* sağ alt sayaçsız kod */
-/* const handleLike = () => {
-  // Her basışta kendi ekranında uçur (hissiyat için önemli)
-  triggerHeartAnimation();
-
-  if (partnerId) {
-    // SİNYAL GÖNDERİMİ:
-    // Eğer ben kayıtlıysam ve ilk kez basıyorsam 'true' gönderirim.
-    // Eğer ben kayıtsızsam her zaman 'false' gönderirim.
-    const shouldIncrease = dbUserId ? !hasLiked : false;
-
-    socket.emit("like_partner", { 
-      targetId: partnerId, 
-      increaseCounter: shouldIncrease 
-    });
-
-    // İlk basıştan sonra state'i kapat (kayıtlılar için)
-    if (!hasLiked && dbUserId) {
-      setHasLiked(true);
-    }
-  }
-};
- */
-
   const handleLike = () => {
     triggerHeartAnimation();
-    
-    // State'in güncellenmesini beklemeden taze değişken oluşturuyoruz
     const updatedLikes = sessionLikes + 1; 
     setSessionLikes(updatedLikes);
 
     if (partnerId) {
       const shouldIncrease = dbUserId ? !hasLiked : false;
-
-      // socket'e sessionLikes yerine updatedLikes gönderiyoruz
       socket.emit("like_partner", { 
         targetId: partnerId, 
         increaseCounter: shouldIncrease,
         currentSessionLikes: updatedLikes 
       });
-
       if (!hasLiked && dbUserId) {
         setHasLiked(true);
       }
     }
   };
 
-  /* const handleReport = () => {
-    if (partnerId) {
-      const canvas = document.createElement("canvas");
-      if (remoteVideoRef.current) {
-        canvas.width = remoteVideoRef.current.videoWidth;
-        canvas.height = remoteVideoRef.current.videoHeight;
-        canvas.getContext("2d")?.drawImage(remoteVideoRef.current, 0, 0);
-        const screenshot = canvas.toDataURL("image/jpeg", 0.5);
-        
-        fetch("https://videochat-1qxi.onrender.com/api/report-user", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            reporterId: socket.id, 
-            reportedId: partnerId, 
-            screenshot 
-          })
-        }).then(() => {
-          alert("User reported!");
-          handleNext();
-        });
-      }
-    }
-  }; */
-
+  // --- REPORT BUTONUNA TIKLANINCA ---
   const handleReport = () => {
-  // Eğer şu an biriyle eşleşmişsek, onun görüntüsünü de havuza ekleyelim ki listede çıksın
-  if (partnerId && remoteVideoRef.current) {
-    const canvas = document.createElement("canvas");
-    canvas.width = remoteVideoRef.current.videoWidth;
-    canvas.height = remoteVideoRef.current.videoHeight;
-    canvas.getContext("2d")?.drawImage(remoteVideoRef.current, 0, 0);
-    const screenshot = canvas.toDataURL("image/jpeg", 0.4);
+    // Eğer o an biriyle konuşuyorsak onu da listeye ekle
+    captureAndAddToHistory();
+    // Modalı aç
+    setShowReportModal(true);
+  };
 
-    const currentEntry = { 
-      id: partnerId, 
-      country: partnerCountry || "Unknown", 
-      flag: partnerFlag || "🌐", 
-      screenshot 
-    };
-
-    // Mevcut kişiyi listenin başına ekle (eğer listede yoksa)
-    setReportHistory(prev => {
-      if (prev.find(p => p.id === partnerId)) return prev;
-      return [currentEntry, ...prev].slice(0, 3);
+  // --- SON RAPORU GÖNDERME ---
+  const sendFinalReport = (targetUser: ReportItem) => {
+    fetch("https://videochat-1qxi.onrender.com/api/report-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        reporterId: socket.id, 
+        reportedId: targetUser.id, 
+        screenshot: targetUser.screenshot 
+      })
+    }).then(() => {
+      alert("Kullanıcı başarıyla bildirildi!");
+      setShowReportModal(false);
+      // Eğer raporlanan kişi şu anki aktif partner ise onu geç
+      if (targetUser.id === partnerId) handleNext();
     });
-  }
-  
-  // Modalı aç
-  setShowReportModal(true);
-};
-
-
-const sendFinalReport = (targetUser: { id: string, screenshot: string }) => {
-  fetch("https://videochat-1qxi.onrender.com/api/report-user", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ 
-      reporterId: socket.id, 
-      reportedId: targetUser.id, 
-      screenshot: targetUser.screenshot 
-    })
-  }).then(() => {
-    alert("Kullanıcı başarıyla bildirildi!");
-    setShowReportModal(false);
-    // Eğer raporlanan kişi şu anki aktif partner ise bir sonrakine geç
-    if (targetUser.id === partnerId) handleNext();
-  });
-};
+  };
 
   const toggleActive = () => {
     const nextState = !isActive;
@@ -467,7 +357,7 @@ const sendFinalReport = (targetUser: { id: string, screenshot: string }) => {
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <div className="fixed inset-0 w-full h-full bg-[#050505] text-white flex flex-col font-sans overflow-hidden select-none" style={{ height: 'var(--vv-height, 100vh)' }}>
         
-        {/* --- MODALLAR --- */}
+        {/* --- LOGIN MODAL --- */}
         {showLoginRequired && (
           <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-2xl">
             <div className="bg-[#121214] border border-blue-500/20 w-full max-w-sm rounded-[40px] p-8 shadow-2xl text-center relative animate-in zoom-in-95 duration-300">
@@ -505,8 +395,6 @@ const sendFinalReport = (targetUser: { id: string, screenshot: string }) => {
             </div>
           </div>
         )}
-
-        
 
         {showCountryFilter && (
           <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
@@ -587,7 +475,6 @@ const sendFinalReport = (targetUser: { id: string, screenshot: string }) => {
             <div className="absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5">
               <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
               
-              {/* YENİ: RENKLİ VE UÇUŞAN KALPLER */}
               {flyingHearts.map((heart) => (
                 <div 
                   key={heart.id} 
@@ -598,13 +485,11 @@ const sendFinalReport = (targetUser: { id: string, screenshot: string }) => {
                 </div>
               ))}
 
-              {/* STRANGER INFO & KENDİ AVATARIN - TAVANA TAM SIFIR */}
     <div className="absolute top-0 left-0 z-[120] flex flex-col gap-0">
     {!isSearching && isActive && partnerId && (
     <div className="relative group">
       {/* ÜST BİLGİ KARTI */}
       <div className="flex items-center gap-1 bg-zinc-950 backdrop-blur-3xl border-r border-b border-white/10 pl-1 pr-4 py-1 rounded-br-[32px] shadow-2xl animate-in slide-in-from-top-10 duration-500">
-        {/* Bayrak */}
         <div className="w-9 h-9 flex items-center justify-center bg-white/5 rounded-2xl text-xl shrink-0">
           {partnerFlag}
         </div>
@@ -615,7 +500,6 @@ const sendFinalReport = (targetUser: { id: string, screenshot: string }) => {
             <span className="text-[9px] font-black text-white uppercase tracking-tight leading-none">{partnerCountry}</span>
           </div>
           
-          {/* KALP SAYACI */}
           <div 
             onClick={handleLike}
             className="flex items-center gap-1.5 bg-pink-500/20 px-2 py-0.5 rounded-xl cursor-pointer hover:bg-pink-500/30 transition-all border border-pink-500/10"
@@ -629,7 +513,6 @@ const sendFinalReport = (targetUser: { id: string, screenshot: string }) => {
 
         <div className="h-6 w-[1px] bg-white/10 mx-0.5"></div>
 
-        {/* Cinsiyet */}
         <div className={`flex items-center justify-center w-8 h-8 rounded-lg ${partnerGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>
           <span className="text-lg font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
         </div>
@@ -637,71 +520,72 @@ const sendFinalReport = (targetUser: { id: string, screenshot: string }) => {
 
       {/* STRANGER'DAN GELEN CANLI KALP SAYACI (BALON) */}
       {partnerSessionLikes > 0 && (
-    <div className="absolute -bottom-10 left-2 animate-bounce bg-pink-600 px-3 py-1.5 rounded-full border border-white/20 shadow-[0_0_20px_rgba(219,39,119,0.6)] z-[200]">
-    <span className="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2">
-      <Heart size={12} className="fill-white animate-pulse" />
-      {partnerSessionLikes}
-    </span>
-  </div>
-)}
-              {/* REPORT AÇILIŞ MODALI */}
-
-              {showReportModal && (
-            <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-300">
-              <div className="w-full max-w-sm bg-[#121214] border border-white/10 rounded-[40px] p-6 shadow-2xl relative overflow-hidden">
-                
-                {/* Başlık Bölümü */}
-                <div className="text-center mb-8">
-                  <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-6 md:hidden"></div> {/* Mobil tutamaç */}
-                  <h3 className="text-xl font-black italic tracking-tighter text-white uppercase italic">
-                    Kötüye Kullanımı Bildir
-                  </h3>
-                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2">
-                    Şikayet etmek istediğiniz kişiyi seçin
-                  </p>
-                </div>
-
-                {/* Grid Yapısı - Tam Ortalı */}
-                <div className="grid grid-cols-3 gap-3 mb-8">
-                  {reportHistory.map((item, index) => (
-                    <div 
-                      key={index} 
-                      className="relative aspect-[3/4] rounded-2xl overflow-hidden border-2 border-transparent hover:border-red-500 active:scale-95 transition-all shadow-lg cursor-pointer"
-                      onClick={() => sendFinalReport(item)}
-                    >
-                      <img src={item.screenshot} className="w-full h-full object-cover" alt="History" />
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-center">
-                        <span className="text-[10px]">{item.flag}</span>
-                      </div>
-                      {/* Hızlı Seçim İkonu */}
-                      <div className="absolute inset-0 flex items-center justify-center bg-red-600/20 opacity-0 hover:opacity-100 transition-opacity">
-                        <ShieldAlert size={20} className="text-white drop-shadow-lg" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Butonlar */}
-                <div className="space-y-3">
-                  <button 
-                    onClick={() => setShowReportModal(false)}
-                    className="w-full py-4 rounded-2xl bg-white/5 text-zinc-400 font-black uppercase text-[10px] tracking-[0.2em] hover:bg-white/10 active:scale-95 transition-all"
-                  >
-                    Vazgeç
-                  </button>
-                </div>
-
-                {/* Arka Plan Dekorasyonu */}
-                <div className="absolute -top-10 -right-10 w-32 h-32 bg-red-600/10 blur-[50px] rounded-full pointer-events-none"></div>
-              </div>
-            </div>
-        )}
-
-
+        <div className="absolute -bottom-10 left-2 animate-bounce bg-pink-600 px-3 py-1.5 rounded-full border border-white/20 shadow-[0_0_20px_rgba(219,39,119,0.6)] z-[200]">
+          <span className="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2">
+            <Heart size={12} className="fill-white animate-pulse" />
+            {partnerSessionLikes}
+          </span>
+        </div>
+      )}
     </div>
   )}
 
-  {/* KENDİ AVATARIN - BALON VARSA mt-12, YOKSA mt-2 OLACAK ŞEKİLDE AYARLANDI */}
+  {/* OME.TV TARZI REPORT MODALI */}
+  {showReportModal && (
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-300">
+      <div className="w-full max-w-sm bg-[#121214] border border-white/10 rounded-[40px] p-6 shadow-2xl relative overflow-hidden">
+        
+        {/* Başlık Bölümü */}
+        <div className="text-center mb-8">
+          <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-6 md:hidden"></div> 
+          <h3 className="text-xl font-black italic tracking-tighter text-white uppercase italic">
+            Kötüye Kullanımı Bildir
+          </h3>
+          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2">
+            Şikayet etmek istediğiniz kişiyi seçin
+          </p>
+        </div>
+
+        {/* Grid Yapısı - Tam Ortalı */}
+        <div className="grid grid-cols-3 gap-3 mb-8">
+          {reportHistory.map((item, index) => (
+            <div 
+              key={index} 
+              className="relative aspect-[3/4] rounded-2xl overflow-hidden border-2 border-transparent hover:border-red-500 active:scale-95 transition-all shadow-lg cursor-pointer"
+              onClick={() => sendFinalReport(item)}
+            >
+              <img src={item.screenshot} className="w-full h-full object-cover" alt="History" />
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-center">
+                <span className="text-[10px]">{item.flag}</span>
+              </div>
+              {/* Hızlı Seçim İkonu */}
+              <div className="absolute inset-0 flex items-center justify-center bg-red-600/60 opacity-0 hover:opacity-100 transition-opacity">
+                <ShieldAlert size={24} className="text-white drop-shadow-lg" />
+              </div>
+            </div>
+          ))}
+          {reportHistory.length === 0 && (
+             <p className="col-span-3 text-center text-xs text-zinc-500 py-4">Bildirilecek geçmiş kullanıcı yok.</p>
+          )}
+        </div>
+
+        {/* Butonlar */}
+        <div className="space-y-3">
+          <button 
+            onClick={() => setShowReportModal(false)}
+            className="w-full py-4 rounded-2xl bg-white/5 text-zinc-400 font-black uppercase text-[10px] tracking-[0.2em] hover:bg-white/10 active:scale-95 transition-all"
+          >
+            Vazgeç
+          </button>
+        </div>
+
+        {/* Arka Plan Dekorasyonu */}
+        <div className="absolute -top-10 -right-10 w-32 h-32 bg-red-600/10 blur-[50px] rounded-full pointer-events-none"></div>
+      </div>
+    </div>
+  )}
+
+  {/* KENDİ AVATARIN */}
   {userAvatar && !showModal && (
     <div className={`ml-3 ${partnerSessionLikes > 0 ? 'mt-12' : 'mt-2'} transition-all duration-300 flex items-center gap-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit animate-in fade-in slide-in-from-left-4`}>
       <img 
@@ -755,22 +639,19 @@ const sendFinalReport = (targetUser: { id: string, screenshot: string }) => {
                 <div className="absolute right-1 top-6 flex flex-col gap-3 z-[80]">
                   <button onClick={() => setShowOptions(true)} className="w-10 h-10 bg-black/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Settings size={26}/></button>
                   <button onClick={() => dbUserId ? setShowGenderFilter(true) : setShowLoginRequired(true)} className="w-10 h-10 bg-black/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><User size={26}/></button>
-                  {/* BÖLGE/BAYRAK BUTONU - YENİ DÜZENLEME */}
-    {/* BÖLGE/BAYRAK BUTONU - KENDİ ÜLKESİNİ ÖNCELİKLENDİREN YAPI */}
-    {/* BÖLGE/BAYRAK BUTONU */}
-<button 
-  onClick={() => dbUserId ? setShowCountryFilter(true) : setShowLoginRequired(true)} 
-  className="w-10 h-10 bg-black/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all overflow-hidden group"
->
-  <span className="text-2xl group-active:scale-110 transition-transform">
-    {/* Eğer kullanıcı bir filtre seçtiyse onu göster, seçmediyse (all ise) kendi ülkesini göster */}
-    {selectedCountry && selectedCountry !== "all" ? (
-      getFlagEmoji(selectedCountry)
-    ) : (
-      getFlagEmoji(userCountry)
-    )}
-  </span>
-</button>
+                  {/* BÖLGE/BAYRAK BUTONU */}
+                  <button 
+                    onClick={() => dbUserId ? setShowCountryFilter(true) : setShowLoginRequired(true)} 
+                    className="w-10 h-10 bg-black/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all overflow-hidden group"
+                  >
+                    <span className="text-2xl group-active:scale-110 transition-transform">
+                      {selectedCountry && selectedCountry !== "all" ? (
+                        getFlagEmoji(selectedCountry)
+                      ) : (
+                        getFlagEmoji(userCountry)
+                      )}
+                    </span>
+                  </button>
                 </div>
               )}
 
@@ -862,7 +743,6 @@ const sendFinalReport = (targetUser: { id: string, screenshot: string }) => {
                     <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-[0.4em]">Premium Network</p>
                   </div>
                   
-                  {/* MODAL GÜNCELLEMESİ: Google Login kaldırıldı, misafir dostu yapıldı */}
                   <div className="bg-white/5 p-6 rounded-3xl border border-white/10 mb-6">
                     {userName ? (
                       <div className="space-y-2 animate-in fade-in zoom-in-95 duration-500">
