@@ -591,12 +591,12 @@ export default function Home() {
 
 
               {!isSearching && isActive && partnerId && (
-                <div className="absolute bottom-24 md:bottom-6 right-1.5 flex flex-col gap-1 z-[70]">
+                <div className="absolute bottom-8 md:bottom-6 right-1.5 flex flex-col gap-1 z-[70]">
                   <button onClick={handleReport} className="w-10 h-10 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center justify-center text-zinc-400 hover:text-red-500 transition-all active:scale-90">
                     <ShieldAlert size={24} />
                   </button>
                   <button onClick={handleLike} className="w-10 h-10 bg-pink-600/20 backdrop-blur-2xl border border-pink-500/30 rounded-full flex items-center justify-center text-pink-500 shadow-2xl shadow-pink-500/20 active:scale-90 transition-all group">
-                    <Heart size={24} className="group-hover:fill-pink-500 transition-all" />
+                    <Heart size={26} className="group-hover:fill-pink-500 transition-all" />
 
                     {/* YEREL SAYAÇ BALONU */}
                       {sessionLikes > 0 && (
@@ -619,7 +619,7 @@ export default function Home() {
                   <p className="text-[10px] font-black uppercase tracking-widest text-blue-400">Searching...</p>
                 </div>
               )}
-              <div className="absolute top-6 right-6 z-50"><h1 className="text-xl font-black italic text-blue-500 tracking-tighter">OMEGPT</h1></div>
+              <div className="absolute top-2 right-6 z-50"><h1 className="text-xl font-black italic text-blue-500 tracking-tighter">OMEGPT</h1></div>
             </div>
 
             <div className="absolute bottom-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900">
@@ -660,11 +660,11 @@ export default function Home() {
 
              {/* ALT KONTROL BARI - TABANA TAM SIFIR */}
             {!showModal && (
-              <div className="md:hidden absolute bottom-0 left-0 w-full h-16 bg-gradient-to-t from-black via-black/80 to-transparent flex items-center justify-between px-10 z-[100] pb-4">
+              <div className="md:hidden absolute bottom-0 left-0 w-full h-12 bg-gradient-to-t from-black via-black/40 to-transparent flex items-center justify-between px-5 z-[100] pb-4">
                 {/* Durdur/Başlat */}
                 <button 
                   onClick={toggleActive} 
-                  className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all active:scale-90 shadow-lg ${isActive ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all active:scale-90 shadow-lg ${isActive ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}
                 >
                   {isActive ? <Square size={26} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
                 </button>
@@ -673,7 +673,7 @@ export default function Home() {
                 <button 
                   onClick={() => handleNext()} 
                   disabled={!isActive} 
-                  className="bg-blue-600 text-white px-16 py-4 rounded-[20px] font-black text-sm uppercase tracking-[0.2em] disabled:opacity-30 flex items-center gap-3 active:scale-95 transition-all shadow-[0_0_30px_rgba(37,99,235,0.4)]"
+                  className="bg-blue-600 text-white px-8 py-3 rounded-[20px] font-black text-sm uppercase tracking-[0.2em] disabled:opacity-30 flex items-center gap-3 active:scale-95 transition-all shadow-[0_0_30px_rgba(37,99,235,0.4)]"
                 >
                   <SkipForward size={20} fill="currentColor" /> NEXT
                 </button>
@@ -682,15 +682,15 @@ export default function Home() {
                 <button 
                   onClick={() => setIsMobileInputActive(!isMobileInputActive)} 
                   disabled={!isActive || !partnerId} 
-                  className={`w-14 h-14 rounded-2xl flex items-center justify-center active:scale-90 shadow-lg ${isMobileInputActive ? 'bg-blue-600 text-white' : 'bg-white/5 text-white'}`}
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center active:scale-90 shadow-lg ${isMobileInputActive ? 'bg-blue-600 text-white' : 'bg-white/5 text-white'}`}
                 >
-                  <MessageCircle size={26} />
+                  <MessageCircle size={22} />
                 </button>
               </div>
             )}
 
               {isMobileInputActive && isActive && (
-                <div className="md:hidden absolute bottom-24 left-6 right-6 z-[110] animate-in slide-in-from-bottom-2 duration-200">
+                <div className="md:hidden absolute bottom-15 left-6 right-6 z-[110] animate-in slide-in-from-bottom-2 duration-200">
                   <form onSubmit={sendMessage} className="flex bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 p-1.5 rounded-2xl shadow-2xl">
                     <input autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Type a message..." className="flex-1 bg-transparent px-4 py-2 text-xs outline-none text-white w-full" />
                     <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-xl flex items-center justify-center active:scale-95"><SkipForward size={18} className="rotate-[-90deg]" /></button>
@@ -704,7 +704,7 @@ export default function Home() {
             <div className="p-6 border-b border-white/5 flex items-center justify-between font-black text-zinc-500 uppercase tracking-[0.3em] text-[10px]">Interaction Area
               {!showModal && (
                   <button onClick={toggleActive} className={`flex items-center gap-2 px-4 py-2 rounded-full text-[9px] transition-all ${isActive ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-green-500/10 text-green-500 border border-green-500/20'}`}>
-                      {isActive ? <Square size={10} fill="currentColor"/> : <Play size={10} fill="currentColor"/>} {isActive ? 'Stop' : 'Start'}
+                      {isActive ? <Square size={10} fill="currentColor"/> : <Play size={12} fill="currentColor"/>} {isActive ? 'Stop' : 'Start'}
                   </button>
               )}
             </div>

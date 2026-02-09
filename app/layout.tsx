@@ -21,7 +21,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "OMEGPT | Akıllı Video Chat",
+  title: "OMEGPT | AI Video Chat",
   description: "Omegle tarzı, yapay zeka destekli video sohbet uygulaması",
 };
 
