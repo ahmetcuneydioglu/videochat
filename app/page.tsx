@@ -210,30 +210,39 @@ export default function Home() {
   }, [isMounted, allCountries, isActive]);
 
   const captureAndAddToHistory = () => {
-    if (partnerId && remoteVideoRef.current) {
+    // remoteVideoRef'in yüklü ve video verisinin hazır olduğundan emin ol
+    if (partnerId && remoteVideoRef.current && remoteVideoRef.current.readyState === 4) {
         try {
             const canvas = document.createElement("canvas");
+            // Videonun gerçek boyutlarını al
             canvas.width = remoteVideoRef.current.videoWidth;
             canvas.height = remoteVideoRef.current.videoHeight;
-            canvas.getContext("2d")?.drawImage(remoteVideoRef.current, 0, 0);
-            const screenshot = canvas.toDataURL("image/jpeg", 0.4);
+            
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+                ctx.drawImage(remoteVideoRef.current, 0, 0);
+                const screenshot = canvas.toDataURL("image/jpeg", 0.4);
 
-            const newEntry: ReportItem = { 
-              id: partnerId, 
-              country: partnerCountry || "Unknown", 
-              flag: partnerFlag || "🌐", 
-              screenshot 
-            };
+                // Eğer screenshot çok kısaysa (boş veri üretildiyse) ekleme yapma
+                if (screenshot.length < 1000) return;
 
-            setReportHistory(prev => {
-                if (prev.some(p => p.id === partnerId)) return prev;
-                return [newEntry, ...prev].slice(0, 3);
-            });
+                const newEntry = { 
+                  id: partnerId, 
+                  country: partnerCountry || "Unknown", 
+                  flag: partnerFlag || "🌐", 
+                  screenshot 
+                };
+
+                setReportHistory(prev => {
+                    if (prev.some(p => p.id === partnerId)) return prev;
+                    return [newEntry, ...prev].slice(0, 3);
+                });
+            }
         } catch (e) {
-            console.error("Screenshot capture failed", e);
+            console.error("Ekran görüntüsü alınamadı:", e);
         }
     }
-  };
+};
 
   const cleanUpPeer = () => {
     captureAndAddToHistory();
