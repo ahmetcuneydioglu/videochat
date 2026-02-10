@@ -133,13 +133,50 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+  if (!socket) return;
+
+
+  socket.on('partner_left_auto_next', () => {
+    console.log("Partner ayrıldı, otomatik olarak bir sonrakine geçiliyor...");
+    
+    // 1. Mevcut görüntüyü ve bağlantıyı temizle
+    if (peerRef.current) {
+        peerRef.current.destroy();
+        peerRef.current = null;
+    }
+    
+    // 2. Uzak videoyu temizle
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+
+    // 3. Hiç beklemeden bir sonraki kullanıcıyı aramaya başla
+    handleNext(); 
+  });
+
+  return () => {
+    socket.off('partner_left_auto_next');
+  };
+}, [socket]);
+
   const startMedia = async (mode: "user" | "environment" = facingMode) => {
     try {
-      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-      const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode }, audio: true });
+      // 1. KONTROL: Eğer zaten çalışan bir stream varsa ve kamera yönü (mode) aynıysa hiçbir şey yapma
+      if (streamRef.current && streamRef.current.active) {
+        // Eğer zaten bir stream varsa fonksiyonu burada bitir, böylece yeni izin istemez
+        return; 
+      }
+
+      // Eğer stream yoksa veya kapanmışsa yeni bir tane başlat
+      const newStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: mode }, 
+        audio: true 
+      });
+      
       streamRef.current = newStream;
       if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
-    } catch (err) { console.error("Media error:", err); }
+    } catch (err) { 
+      console.error("Media error:", err); 
+    }
   };
 
   const getRandomHeartColor = () => {
@@ -276,6 +313,7 @@ export default function Home() {
     cleanUpPeer();
     setIsSearching(true);
     socket.emit("find_partner", { myGender, searchGender, selectedCountry });
+    socket.emit("next_user");
   };
 
   const handleLike = () => {
@@ -543,7 +581,28 @@ export default function Home() {
               
               {!isActive && !showModal && (
                 <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-xl">
-                  <button onClick={toggleActive} className="bg-blue-600 text-white px-10 py-5 rounded-[24px] font-black uppercase text-xs flex items-center gap-3 active:scale-95 transition-transform"><Play size={20} fill="currentColor"/> Start Chat</button>
+                  <button 
+                    onClick={() => {
+                      // 1. Sistemi aktif moda al ve arama animasyonunu aç
+                      setIsActive(true);
+                      setIsSearching(true);
+
+                      // 2. Kamerayı başlat (Zaten açıksa izin istemeyecek)
+                      startMedia();
+
+                      // 3. Sunucuya doğrudan "ara" komutu gönder
+                      if (socket) {
+                        socket.emit("find_partner", { 
+                          myGender: myGender, 
+                          searchGender: searchGender, 
+                          selectedCountry: selectedCountry 
+                        });
+                      }
+                    }} 
+                    className="bg-blue-600 text-white px-10 py-5 rounded-[24px] font-black uppercase text-xs flex items-center gap-3 active:scale-95 transition-transform"
+                  >
+                    <Play size={20} fill="currentColor"/> Start Chat
+                  </button>
                 </div>
               )}
               {isSearching && isActive && (
@@ -673,8 +732,30 @@ export default function Home() {
                           <span className="text-[10px] uppercase font-black">Female</span>
                       </button>
                   </div>
-                  <button onClick={() => { if(!myGender) return alert("Select gender!"); setShowModal(false); setIsActive(true); handleNext(); }} className="w-full bg-zinc-100 text-black py-5 rounded-[24px] font-black text-lg hover:bg-blue-600 hover:text-white transition-all active:scale-95 uppercase">Let&apos;s Go 🚀</button>
-              </div>
+                    <button 
+                      onClick={() => { 
+                        if(!myGender) return alert("Select gender!"); 
+                        
+                        // 1. Durumları güncelle
+                        setShowModal(false); 
+                        setIsActive(true); 
+                        setIsSearching(true); 
+
+                        // 2. Kamerayı garantiye al
+                        startMedia();
+
+                        // 3. handleNext'i beklemek yerine doğrudan aramayı başlat
+                        socket.emit("find_partner", { 
+                          myGender: myGender, 
+                          searchGender: searchGender, 
+                          selectedCountry: selectedCountry 
+                        });
+                      }} 
+                      className="w-full bg-zinc-100 text-black py-5 rounded-[24px] font-black text-lg hover:bg-blue-600 hover:text-white transition-all active:scale-95 uppercase"
+                    >
+                      Let&apos;s Go 🚀
+                    </button> 
+             </div>
           </div>
         )}
 

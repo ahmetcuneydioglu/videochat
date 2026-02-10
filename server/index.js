@@ -177,29 +177,6 @@ io.on('connection', async (socket) => {
     }
   });
 
-  //like yapabilmek için login gerekli olmalı kodu
-  /* socket.on('like_partner', async ({ targetId, increaseCounter }) => {
-    const me = userDetails.get(socket.id);
-    const partner = userDetails.get(targetId);
-
-    // Sadece kayıtlı olanlar beğeni gönderebilir
-    if (!me || !me.isRegistered) return;
-
-    if (partner && partner.dbId) {
-      // 1. ADIM: Sayaç Artırma (Sadece ilk basışta)
-      if (increaseCounter) {
-        await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
-        partner.likes += 1;
-        // Opsiyonel: Sadece puan arttığında log tutmak istersen buraya alabilirsin
-        new Log({ userId: socket.id, userIP: me.ip, action: 'LIKED', targetId }).save();
-      }
-
-      // 2. ADIM: Animasyon Sinyali (Her zaman)
-      // Partnerin ekranında kalplerin uçması için bu emit her durumda çalışmalı
-      io.to(targetId).emit('receive_like', { newLikes: partner.likes });
-    }
-}); */
-
 
 socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLikes }) => {
     const me = userDetails.get(socket.id);
@@ -229,6 +206,37 @@ socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLike
     io.to(targetId).emit('receive_like', { newLikes: partner.likes, senderSessionLikes: currentSessionLikes });
 });
 
+
+// --- YENİ: Kullanıcı Raporlama Sistemi ---
+  socket.on('report_user', async ({ reportedId, screenshot }) => {
+    const reporter = userDetails.get(socket.id);
+    const reported = userDetails.get(reportedId);
+
+    if (reported) {
+      try {
+        // MongoDB'ye kaydet
+        const newReport = new Report({
+          reporterId: socket.id,
+          reportedId: reportedId,
+          reportedIP: reported.ip,
+          screenshot: screenshot, // Frontend'den gelen Base64 resim
+          date: new Date()
+        });
+        await newReport.save();
+
+        // Raporlanan kullanıcının detaylarındaki rapor sayısını artır (Admin panel için)
+        reported.reports = (reported.reports || 0) + 1;
+
+        // Log kaydı tut
+        new Log({ userId: socket.id, userIP: reporter.ip, action: 'REPORTED', targetId: reportedId }).save();
+        
+        console.log(`⚠️ Kullanıcı Raporlandı: ${reportedId}`);
+      } catch (err) {
+        console.error("Rapor kaydedilemedi:", err);
+      }
+    }
+  });
+
   socket.on('stop_search', () => {
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
     const u = userDetails.get(socket.id);
@@ -237,14 +245,97 @@ socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLike
     if (partnerId) io.to(partnerId).emit('partner_disconnected');
   });
 
-  socket.on('signal', (data) => {
-    io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
+
+          // --- ADMIN PANELİ API ROTALARI ---
+
+        // 1. Aktif Kullanıcıları Listele
+        app.get('/api/admin/active-users', (req, res) => {
+          const users = Array.from(userDetails.values());
+          res.json(users);
+        });
+
+        // 2. Tüm Raporları Getir
+        app.get('/api/reports', async (req, res) => {
+          const reports = await Report.find().sort({ date: -1 }).limit(50);
+          res.json(reports);
+        });
+
+        // 3. Rapor Sil
+        app.delete('/api/reports/:id', async (req, res) => {
+          await Report.findByIdAndDelete(req.params.id);
+          res.json({ success: true });
+        });
+
+        // 4. Yasaklıları Getir
+        app.get('/api/bans', async (req, res) => {
+          const bans = await Ban.find();
+          res.json(bans);
+        });
+
+        // 5. IP Yasakla
+        app.post('/api/ban-user', async (req, res) => {
+          const { ip, reason } = req.body;
+          const newBan = new Ban({ ip, reason: reason || "Admin tarafından yasaklandı" });
+          await newBan.save();
+          res.json({ success: true });
+        });
+
+        // 6. Ban Kaldır
+        app.delete('/api/bans/:ip', async (req, res) => {
+          await Ban.findOneAndDelete({ ip: req.params.ip });
+          res.json({ success: true });
+        });
+
+        // 7. Genel İstatistikler
+        app.get('/api/admin/stats', async (req, res) => {
+          const activeUsers = userDetails.size;
+          const totalBans = await Ban.countDocuments();
+          const pendingReports = await Report.countDocuments();
+          res.json({ activeUsers, totalBans, pendingReports, totalMatchesToday: 0 });
+        });
+
+
+  // --- YENİ: Bir kullanıcı Next dediğinde ---
+  socket.on('next_user', () => {
+    const partnerId = activeMatches.get(socket.id);
+    
+    if (partnerId) {
+      // 1. Karşı tarafa "Partnerin ayrıldı, sen de aramaya başla" sinyali gönder
+      io.to(partnerId).emit('partner_left_auto_next');
+      
+      // 2. Eşleşme kaydını her iki taraftan da sil
+      activeMatches.delete(socket.id);
+      activeMatches.delete(partnerId);
+      
+      // 3. Partnerin durumunu SEARCHING yap (opsiyonel, frontend handle edecek)
+      const p = userDetails.get(partnerId);
+      if (p) p.status = 'SEARCHING';
+    }
+
+    // 4. Kendisini arama kuyruğundan temizle (ne olur ne olmaz)
+    globalQueue = globalQueue.filter(u => u.id !== socket.id);
+    const u = userDetails.get(socket.id);
+    if (u) u.status = 'IDLE';
   });
 
-  socket.on('disconnect', () => {
-    userDetails.delete(socket.id);
-    globalQueue = globalQueue.filter(u => u.id !== socket.id);
-  });
+  socket.on('signal', (data) => {
+        io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
+      });
+
+      socket.on('disconnect', () => {
+        const partnerId = activeMatches.get(socket.id);
+        if (partnerId) {
+          // Bağlantı koptuğunda da partneri otomatik aramaya yönlendir
+          io.to(partnerId).emit('partner_left_auto_next');
+          activeMatches.delete(partnerId);
+        }
+        
+        userDetails.delete(socket.id);
+        globalQueue = globalQueue.filter(u => u.id !== socket.id);
+        activeMatches.delete(socket.id);
+      });
+
+
 });
 
 const PORT = process.env.PORT || 5001;
