@@ -124,6 +124,7 @@ export default function Home() {
     if (storedName) setUserName(storedName);
     if (storedAvatar) setUserAvatar(storedAvatar); 
     
+    // Yükseklik ayarı yerine h-dvh kullanacağız ama fallback olarak kalsın
     const setHeight = () => document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
     setHeight();
     window.addEventListener('resize', setHeight);
@@ -355,9 +356,12 @@ export default function Home() {
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <div className="fixed inset-0 w-full h-full bg-[#050505] text-white flex flex-col font-sans overflow-hidden select-none" style={{ height: 'var(--vv-height, 100vh)' }}>
+      {/* h-[100dvh] -> Dynamic Viewport Height: Mobilde adres çubuğu sorununu çözer 
+        select-none -> Kullanıcının yanlışlıkla metin seçmesini engeller
+      */}
+      <div className="fixed inset-0 w-full bg-[#050505] text-white flex flex-col font-sans overflow-hidden select-none h-[100dvh]">
         
-        {/* --- LOGIN MODAL --- */}
+        {/* --- MODALLAR --- */}
         {showLoginRequired && (
           <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-2xl">
             <div className="bg-[#121214] border border-blue-500/20 w-full max-w-sm rounded-[40px] p-8 shadow-2xl text-center relative animate-in zoom-in-95 duration-300">
@@ -470,9 +474,14 @@ export default function Home() {
           </div>
         )}
 
-        <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-          <div className="flex-1 relative md:max-w-[50%] h-full bg-black">
-            <div className="absolute top-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900 border-b border-white/5">
+        <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative h-full">
+          {/* SOL TARAF (MOBİLDE TAM EKRAN, DESKTOPTA SOL YARI) 
+            Mobilde 'flex-col' sayesinde alt alta dizilir.
+          */}
+          <div className="flex-1 flex flex-col md:max-w-[50%] h-full bg-black relative">
+            
+            {/* 1. KUTU: KARŞI TARAF KAMERASI (Mobilde ÜST YARI - h-1/2) */}
+            <div className="relative w-full h-1/2 bg-zinc-900 overflow-hidden border-b border-white/5">
               <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
               
               {flyingHearts.map((heart) => (
@@ -485,120 +494,110 @@ export default function Home() {
                 </div>
               ))}
 
-    <div className="absolute top-0 left-0 z-[120] flex flex-col gap-0">
-    {!isSearching && isActive && partnerId && (
-    <div className="relative group">
-      {/* ÜST BİLGİ KARTI */}
-      <div className="flex items-center gap-1 bg-zinc-950 backdrop-blur-3xl border-r border-b border-white/10 pl-1 pr-4 py-1 rounded-br-[32px] shadow-2xl animate-in slide-in-from-top-10 duration-500">
-        <div className="w-9 h-9 flex items-center justify-center bg-white/5 rounded-2xl text-xl shrink-0">
-          {partnerFlag}
-        </div>
+              <div className="absolute top-0 left-0 z-[120] flex flex-col gap-0">
+                {!isSearching && isActive && partnerId && (
+                  <div className="relative group">
+                    <div className="flex items-center gap-1 bg-zinc-950 backdrop-blur-3xl border-r border-b border-white/10 pl-1 pr-4 py-1 rounded-br-[32px] shadow-2xl animate-in slide-in-from-top-10 duration-500">
+                      <div className="w-9 h-9 flex items-center justify-center bg-white/5 rounded-2xl text-xl shrink-0">
+                        {partnerFlag}
+                      </div>
 
-        <div className="flex flex-col justify-center gap-0.5">
-          <div className="flex items-center gap-1">
-            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.8)]"></div>
-            <span className="text-[9px] font-black text-white uppercase tracking-tight leading-none">{partnerCountry}</span>
-          </div>
-          
-          <div 
-            onClick={handleLike}
-            className="flex items-center gap-1.5 bg-pink-500/20 px-2 py-0.5 rounded-xl cursor-pointer hover:bg-pink-500/30 transition-all border border-pink-500/10"
-          >
-            <Heart size={8} className="text-pink-500 fill-pink-500" />
-            <span className="text-xm font-black text-pink-500 tabular-nums leading-none">
-              {partnerLikes}
-            </span>
-          </div>
-        </div>
+                      <div className="flex flex-col justify-center gap-0.5">
+                        <div className="flex items-center gap-1">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.8)]"></div>
+                          <span className="text-[9px] font-black text-white uppercase tracking-tight leading-none">{partnerCountry}</span>
+                        </div>
+                        
+                        <div 
+                          onClick={handleLike}
+                          className="flex items-center gap-1.5 bg-pink-500/20 px-2 py-0.5 rounded-xl cursor-pointer hover:bg-pink-500/30 transition-all border border-pink-500/10"
+                        >
+                          <Heart size={8} className="text-pink-500 fill-pink-500" />
+                          <span className="text-xm font-black text-pink-500 tabular-nums leading-none">
+                            {partnerLikes}
+                          </span>
+                        </div>
+                      </div>
 
-        <div className="h-6 w-[1px] bg-white/10 mx-0.5"></div>
+                      <div className="h-6 w-[1px] bg-white/10 mx-0.5"></div>
 
-        <div className={`flex items-center justify-center w-8 h-8 rounded-lg ${partnerGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>
-          <span className="text-lg font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
-        </div>
-      </div>
+                      <div className={`flex items-center justify-center w-8 h-8 rounded-lg ${partnerGender === 'female' ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                        <span className="text-lg font-bold">{partnerGender === 'female' ? '♀' : '♂'}</span>
+                      </div>
+                    </div>
 
-      {/* STRANGER'DAN GELEN CANLI KALP SAYACI (BALON) */}
-      {partnerSessionLikes > 0 && (
-        <div className="absolute -bottom-10 left-2 animate-bounce bg-pink-600 px-3 py-1.5 rounded-full border border-white/20 shadow-[0_0_20px_rgba(219,39,119,0.6)] z-[200]">
-          <span className="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2">
-            <Heart size={12} className="fill-white animate-pulse" />
-            {partnerSessionLikes}
-          </span>
-        </div>
-      )}
-    </div>
-  )}
+                    {partnerSessionLikes > 0 && (
+                      <div className="absolute -bottom-10 left-2 animate-bounce bg-pink-600 px-3 py-1.5 rounded-full border border-white/20 shadow-[0_0_20px_rgba(219,39,119,0.6)] z-[200]">
+                        <span className="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2">
+                          <Heart size={12} className="fill-white animate-pulse" />
+                          {partnerSessionLikes}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-  {/* OME.TV TARZI REPORT MODALI */}
-  {showReportModal && (
-    <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-300">
-      <div className="w-full max-w-sm bg-[#121214] border border-white/10 rounded-[40px] p-6 shadow-2xl relative overflow-hidden">
-        
-        {/* Başlık Bölümü */}
-        <div className="text-center mb-8">
-          <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-6 md:hidden"></div> 
-          <h3 className="text-xl font-black italic tracking-tighter text-white uppercase italic">
-            Kötüye Kullanımı Bildir
-          </h3>
-          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2">
-            Şikayet etmek istediğiniz kişiyi seçin
-          </p>
-        </div>
+                {/* OME.TV TARZI REPORT MODALI */}
+                {showReportModal && (
+                  <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-300">
+                    <div className="w-full max-w-sm bg-[#121214] border border-white/10 rounded-[40px] p-6 shadow-2xl relative overflow-hidden">
+                      <div className="text-center mb-8">
+                        <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-6 md:hidden"></div> 
+                        <h3 className="text-xl font-black italic tracking-tighter text-white uppercase italic">
+                          Kötüye Kullanımı Bildir
+                        </h3>
+                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2">
+                          Şikayet etmek istediğiniz kişiyi seçin
+                        </p>
+                      </div>
 
-        {/* Grid Yapısı - Tam Ortalı */}
-        <div className="grid grid-cols-3 gap-3 mb-8">
-          {reportHistory.map((item, index) => (
-            <div 
-              key={index} 
-              className="relative aspect-[3/4] rounded-2xl overflow-hidden border-2 border-transparent hover:border-red-500 active:scale-95 transition-all shadow-lg cursor-pointer"
-              onClick={() => sendFinalReport(item)}
-            >
-              <img src={item.screenshot} className="w-full h-full object-cover" alt="History" />
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-center">
-                <span className="text-[10px]">{item.flag}</span>
+                      <div className="grid grid-cols-3 gap-3 mb-8">
+                        {reportHistory.map((item, index) => (
+                          <div 
+                            key={index} 
+                            className="relative aspect-[3/4] rounded-2xl overflow-hidden border-2 border-transparent hover:border-red-500 active:scale-95 transition-all shadow-lg cursor-pointer"
+                            onClick={() => sendFinalReport(item)}
+                          >
+                            <img src={item.screenshot} className="w-full h-full object-cover" alt="History" />
+                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-center">
+                              <span className="text-[10px]">{item.flag}</span>
+                            </div>
+                            <div className="absolute inset-0 flex items-center justify-center bg-red-600/60 opacity-0 hover:opacity-100 transition-opacity">
+                              <ShieldAlert size={24} className="text-white drop-shadow-lg" />
+                            </div>
+                          </div>
+                        ))}
+                        {reportHistory.length === 0 && (
+                          <p className="col-span-3 text-center text-xs text-zinc-500 py-4">Bildirilecek geçmiş kullanıcı yok.</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <button 
+                          onClick={() => setShowReportModal(false)}
+                          className="w-full py-4 rounded-2xl bg-white/5 text-zinc-400 font-black uppercase text-[10px] tracking-[0.2em] hover:bg-white/10 active:scale-95 transition-all"
+                        >
+                          Vazgeç
+                        </button>
+                      </div>
+                      <div className="absolute -top-10 -right-10 w-32 h-32 bg-red-600/10 blur-[50px] rounded-full pointer-events-none"></div>
+                    </div>
+                  </div>
+                )}
+
+                {/* KENDİ AVATARIN */}
+                {userAvatar && !showModal && (
+                  <div className={`ml-3 ${partnerSessionLikes > 0 ? 'mt-12' : 'mt-2'} transition-all duration-300 flex items-center gap-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit animate-in fade-in slide-in-from-left-4`}>
+                    <img 
+                      src={userAvatar} 
+                      alt="You" 
+                      className="w-8 h-8 rounded-full border-2 border-blue-500/40 object-cover" 
+                      onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${userName}&background=0D8ABC&color=fff`)}
+                    />
+                    <span className="text-[9px] font-black pr-3 text-white uppercase tracking-widest">YOU</span>
+                  </div>
+                )}
               </div>
-              {/* Hızlı Seçim İkonu */}
-              <div className="absolute inset-0 flex items-center justify-center bg-red-600/60 opacity-0 hover:opacity-100 transition-opacity">
-                <ShieldAlert size={24} className="text-white drop-shadow-lg" />
-              </div>
-            </div>
-          ))}
-          {reportHistory.length === 0 && (
-             <p className="col-span-3 text-center text-xs text-zinc-500 py-4">Bildirilecek geçmiş kullanıcı yok.</p>
-          )}
-        </div>
-
-        {/* Butonlar */}
-        <div className="space-y-3">
-          <button 
-            onClick={() => setShowReportModal(false)}
-            className="w-full py-4 rounded-2xl bg-white/5 text-zinc-400 font-black uppercase text-[10px] tracking-[0.2em] hover:bg-white/10 active:scale-95 transition-all"
-          >
-            Vazgeç
-          </button>
-        </div>
-
-        {/* Arka Plan Dekorasyonu */}
-        <div className="absolute -top-10 -right-10 w-32 h-32 bg-red-600/10 blur-[50px] rounded-full pointer-events-none"></div>
-      </div>
-    </div>
-  )}
-
-  {/* KENDİ AVATARIN */}
-  {userAvatar && !showModal && (
-    <div className={`ml-3 ${partnerSessionLikes > 0 ? 'mt-12' : 'mt-2'} transition-all duration-300 flex items-center gap-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit animate-in fade-in slide-in-from-left-4`}>
-      <img 
-        src={userAvatar} 
-        alt="You" 
-        className="w-8 h-8 rounded-full border-2 border-blue-500/40 object-cover" 
-        onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${userName}&background=0D8ABC&color=fff`)}
-      />
-      <span className="text-[9px] font-black pr-3 text-white uppercase tracking-widest">YOU</span>
-    </div>
-  )}
-</div>
-
 
               {!isSearching && isActive && partnerId && (
                 <div className="absolute bottom-8 md:bottom-6 right-1.5 flex flex-col gap-1 z-[70]">
@@ -607,13 +606,11 @@ export default function Home() {
                   </button>
                   <button onClick={handleLike} className="w-10 h-10 bg-pink-600/20 backdrop-blur-2xl border border-pink-500/30 rounded-full flex items-center justify-center text-pink-500 shadow-2xl shadow-pink-500/20 active:scale-90 transition-all group">
                     <Heart size={26} className="group-hover:fill-pink-500 transition-all" />
-
-                    {/* YEREL SAYAÇ BALONU */}
-                      {sessionLikes > 0 && (
-                        <div className="absolute -top-2 -right-1 bg-pink-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-lg animate-in zoom-in duration-200">
-                          {sessionLikes}
-                        </div>
-                      )}
+                    {sessionLikes > 0 && (
+                      <div className="absolute -top-2 -right-1 bg-pink-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-lg animate-in zoom-in duration-200">
+                        {sessionLikes}
+                      </div>
+                    )}
                   </button>
                 </div>
               )}
@@ -632,14 +629,14 @@ export default function Home() {
               <div className="absolute top-2 right-6 z-50"><h1 className="text-xl font-black italic text-blue-500 tracking-tighter">OMEGPT</h1></div>
             </div>
 
-            <div className="absolute bottom-0 left-0 w-full h-[50%] overflow-hidden bg-zinc-900">
+            {/* 2. KUTU: SENİN KAMERAN (Mobilde ALT YARI - h-1/2) */}
+            <div className="relative w-full h-1/2 bg-zinc-900 overflow-hidden">
               <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
-              {/* sağ ikonların değişmesi için aşağı tarafla oyna */}
+              
               {!showModal && (
                 <div className="absolute right-1 top-6 flex flex-col gap-3 z-[80]">
                   <button onClick={() => setShowOptions(true)} className="w-10 h-10 bg-black/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><Settings size={26}/></button>
                   <button onClick={() => dbUserId ? setShowGenderFilter(true) : setShowLoginRequired(true)} className="w-10 h-10 bg-black/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"><User size={26}/></button>
-                  {/* BÖLGE/BAYRAK BUTONU */}
                   <button 
                     onClick={() => dbUserId ? setShowCountryFilter(true) : setShowLoginRequired(true)} 
                     className="w-10 h-10 bg-black/20 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all overflow-hidden group"
@@ -665,10 +662,9 @@ export default function Home() {
                   <div ref={mobileChatEndRef} />
               </div>
 
-             {/* ALT KONTROL BARI - TABANA TAM SIFIR */}
+             {/* ALT KONTROL BARI - Container'a 'relative' ve 'h-full' verdiğimiz için artık absolute bottom-0 tam oturur */}
             {!showModal && (
-              <div className="md:hidden absolute bottom-0 left-0 w-full h-12 bg-gradient-to-t from-black via-black/40 to-transparent flex items-center justify-between px-5 z-[100] pb-4">
-                {/* Durdur/Başlat */}
+              <div className="md:hidden absolute bottom-0 left-0 w-full h-16 bg-gradient-to-t from-black via-black/40 to-transparent flex items-center justify-between px-5 z-[100] pb-4">
                 <button 
                   onClick={toggleActive} 
                   className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all active:scale-90 shadow-lg ${isActive ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}
@@ -676,7 +672,6 @@ export default function Home() {
                   {isActive ? <Square size={26} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
                 </button>
 
-                {/* NEXT Butonu */}
                 <button 
                   onClick={() => handleNext()} 
                   disabled={!isActive} 
@@ -685,7 +680,6 @@ export default function Home() {
                   <SkipForward size={20} fill="currentColor" /> NEXT
                 </button>
 
-                {/* Mesaj Butonu */}
                 <button 
                   onClick={() => setIsMobileInputActive(!isMobileInputActive)} 
                   disabled={!isActive || !partnerId} 
@@ -697,7 +691,7 @@ export default function Home() {
             )}
 
               {isMobileInputActive && isActive && (
-                <div className="md:hidden absolute bottom-15 left-6 right-6 z-[110] animate-in slide-in-from-bottom-2 duration-200">
+                <div className="md:hidden absolute bottom-20 left-6 right-6 z-[110] animate-in slide-in-from-bottom-2 duration-200">
                   <form onSubmit={sendMessage} className="flex bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 p-1.5 rounded-2xl shadow-2xl">
                     <input autoFocus value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Type a message..." className="flex-1 bg-transparent px-4 py-2 text-xs outline-none text-white w-full" />
                     <button type="submit" className="bg-blue-600 text-white w-10 h-10 rounded-xl flex items-center justify-center active:scale-95"><SkipForward size={18} className="rotate-[-90deg]" /></button>
@@ -735,6 +729,7 @@ export default function Home() {
           </div>
         </main>
 
+        {/* GİRİŞ MODALI AYNI */}
         {showModal && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/85 backdrop-blur-2xl">
               <div className="relative max-w-sm w-full bg-[#111113] border border-white/10 p-10 rounded-[48px] text-center space-y-10 shadow-2xl">
