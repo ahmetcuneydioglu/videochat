@@ -11,6 +11,7 @@ const app = express();
 app.use(cors({ origin: "*", credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 
+// HTTP Redirect (Production için)
 app.use((req, res, next) => {
     if (req.header('x-forwarded-proto') !== 'https' && process.env.NODE_ENV === 'production') {
         res.redirect(`https://${req.header('host')}${req.url}`);
@@ -48,7 +49,7 @@ let globalQueue = [];
 const activeMatches = new Map();
 const userDetails = new Map();
 
-// Admin Paneli için Canlı Maçları Tutan Map (En dışta olmalı)
+// Admin Paneli için Canlı Maçları Tutan Map
 if (!global.liveMatches) global.liveMatches = new Map();
 
 // --- AUTH ROUTE ---
@@ -84,6 +85,12 @@ app.post('/api/auth/social-login', async (req, res) => {
 
 // --- SOCKET.IO ---
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"], credentials: true } });
+
+// YARDIMCI FONKSİYON: Match ID'yi her zaman alfabetik sıraya göre oluşturur.
+// Bu sayede A ile B eşleştiğinde ID her zaman aynı olur, admin panelinde "hayalet" kalmaz.
+const getMatchId = (id1, id2) => {
+    return [id1, id2].sort().join('_');
+};
 
 io.on('connection', async (socket) => {
   let userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
@@ -132,8 +139,12 @@ io.on('connection', async (socket) => {
   const isBanned = await Ban.findOne({ ip: userIP });
   if (isBanned) return socket.disconnect();
 
+  // --- EŞLEŞTİRME MANTIĞI ---
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
+    // 1. Önce bu kullanıcıyı kuyruktan temizle (ne olur ne olmaz)
     globalQueue = globalQueue.filter(item => item.id !== socket.id);
+    
+    // 2. Kullanıcı durumunu SEARCHING yap
     const u = userDetails.get(socket.id);
     if (u) { u.status = 'SEARCHING'; u.myGender = myGender; }
 
@@ -150,15 +161,20 @@ io.on('connection', async (socket) => {
         const pDetails = userDetails.get(partner.id);
         const myDetails = userDetails.get(socket.id);
         
+        // Partneri kuyruktan çıkar
         globalQueue.splice(partnerIndex, 1);
+        
+        // Eşleşmeyi kaydet
         activeMatches.set(socket.id, partner.id);
         activeMatches.set(partner.id, socket.id);
         
         if (myDetails) myDetails.status = 'BUSY';
         if (pDetails) pDetails.status = 'BUSY';
 
-        // --- ADMİN PANELİ İÇİN CANLI EŞLEŞME KAYDI ---
-        const matchId = `match_${socket.id}_${partner.id}`;
+        // --- ADMİN PANELİ KAYDI ---
+        // ID'leri sıralayarak oluşturuyoruz, böylece silerken kolay bulacağız
+        const matchId = getMatchId(socket.id, partner.id);
+        
         global.liveMatches.set(matchId, {
             id: matchId,
             user1: { id: socket.id, country: countryCode, ip: userIP },
@@ -166,6 +182,7 @@ io.on('connection', async (socket) => {
             startTime: new Date()
         });
 
+        // Taraflara bildir
         io.to(socket.id).emit('partner_found', { 
             partnerId: partner.id, 
             initiator: true, 
@@ -185,6 +202,7 @@ io.on('connection', async (socket) => {
       return false;
     };
 
+    // Eşleşme bulunamazsa kuyruğa ekle
     if (!tryMatch()) {
       globalQueue.push({ id: socket.id, myGender, searchGender, countryCode, selectedCountry });
     }
@@ -231,6 +249,7 @@ io.on('connection', async (socket) => {
     }
   });
 
+  // Kullanıcı manuel olarak "Stop" dediğinde (Aramadan çıktığında)
   socket.on('stop_search', () => {
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
     const u = userDetails.get(socket.id);
@@ -239,28 +258,31 @@ io.on('connection', async (socket) => {
     if (partnerId) io.to(partnerId).emit('partner_disconnected');
   });
 
+  // --- KRİTİK DÜZELTME YAPILAN YER ---
+  // Next dendiğinde, YENİ arama kuyruğundan silinmemeli!
   socket.on('next_user', () => {
     const partnerId = activeMatches.get(socket.id);
     
     if (partnerId) {
+      // Eski partnere haber ver
       io.to(partnerId).emit('partner_left_auto_next');
       
+      // Eşleşme kayıtlarını sil
       activeMatches.delete(socket.id);
       activeMatches.delete(partnerId);
       
+      // Partnerin durumunu güncelle (Otomatik aramaya döneceği için SEARCHING kalabilir veya IDLE olabilir)
       const p = userDetails.get(partnerId);
       if (p) p.status = 'SEARCHING';
 
-      // Live match temizliği
-      const matchId1 = `match_${socket.id}_${partnerId}`;
-      const matchId2 = `match_${partnerId}_${socket.id}`;
-      global.liveMatches.delete(matchId1);
-      global.liveMatches.delete(matchId2);
+      // Admin Panelinden (Live Matches) düşür
+      const matchId = getMatchId(socket.id, partnerId);
+      if (global.liveMatches) global.liveMatches.delete(matchId);
     }
-
-    globalQueue = globalQueue.filter(u => u.id !== socket.id);
-    const u = userDetails.get(socket.id);
-    if (u) u.status = 'IDLE';
+    
+    // BURADAN "globalQueue" SİLME KODU KALDIRILDI!
+    // Çünkü find_partner olayı zaten yeni arama için kuyruğa ekledi. 
+    // Eğer burada silersek, kullanıcı "Searching..." ekranında takılı kalır.
   });
 
   socket.on('signal', (data) => {
@@ -273,10 +295,8 @@ io.on('connection', async (socket) => {
       io.to(partnerId).emit('partner_left_auto_next');
       activeMatches.delete(partnerId);
 
-      const matchId1 = `match_${socket.id}_${partnerId}`;
-      const matchId2 = `match_${partnerId}_${socket.id}`;
-      global.liveMatches.delete(matchId1);
-      global.liveMatches.delete(matchId2);
+      const matchId = getMatchId(socket.id, partnerId);
+      if (global.liveMatches) global.liveMatches.delete(matchId);
     }
     
     userDetails.delete(socket.id);
@@ -285,7 +305,7 @@ io.on('connection', async (socket) => {
   });
 });
 
-// --- ADMIN PANELİ API ROTALARI (Socket Dışına Taşındı) ---
+// --- ADMIN PANELİ API ROTALARI ---
 
 app.get('/api/admin/active-users', (req, res) => {
   const users = Array.from(userDetails.values());
