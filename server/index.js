@@ -21,7 +21,7 @@ app.use((req, res, next) => {
 
 const server = http.createServer(app);
 
-// Sondaki /videochat kısmına dikkat, bu veritabanı adını netleştirir.
+// Veritabanı Bağlantısı
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ahmetcnd:Ahmet263271@videochat.vok6vud.mongodb.net/videochat?retryWrites=true&w=majority';
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('✅ MongoDB Bağlantısı Başarılı'))
@@ -43,7 +43,15 @@ const Ban = mongoose.model('Ban', new mongoose.Schema({ ip: String, reason: Stri
 const Report = mongoose.model('Report', new mongoose.Schema({ reporterId: String, reportedId: String, reportedIP: String, screenshot: String, date: { type: Date, default: Date.now } }));
 const Log = mongoose.model('Log', new mongoose.Schema({ userId: String, userIP: String, action: String, targetId: String, duration: Number, date: { type: Date, default: Date.now } }));
 
-// --- API ROTALARI ---
+// --- GLOBAL DEĞİŞKENLER ---
+let globalQueue = [];
+const activeMatches = new Map();
+const userDetails = new Map();
+
+// Admin Paneli için Canlı Maçları Tutan Map (En dışta olmalı)
+if (!global.liveMatches) global.liveMatches = new Map();
+
+// --- AUTH ROUTE ---
 const client = new OAuth2Client("18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com");
 
 app.post('/api/auth/social-login', async (req, res) => {
@@ -74,11 +82,8 @@ app.post('/api/auth/social-login', async (req, res) => {
   }
 });
 
+// --- SOCKET.IO ---
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"], credentials: true } });
-
-let globalQueue = [];
-const activeMatches = new Map();
-const userDetails = new Map();
 
 io.on('connection', async (socket) => {
   let userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
@@ -111,7 +116,6 @@ io.on('connection', async (socket) => {
     myGender: 'male'
   });
 
-  // --- YENİ: Login sonrası senkronizasyon ---
   socket.on("user_logged_in", async ({ dbUserId }) => {
     const u = userDetails.get(socket.id);
     if (u && mongoose.Types.ObjectId.isValid(dbUserId)) {
@@ -128,10 +132,7 @@ io.on('connection', async (socket) => {
   const isBanned = await Ban.findOne({ ip: userIP });
   if (isBanned) return socket.disconnect();
 
-  // Dosyanın en üst kısımlarına, değişken tanımlarının yanına ekle:
-if (!global.liveMatches) global.liveMatches = new Map();
-
-socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
+  socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
     globalQueue = globalQueue.filter(item => item.id !== socket.id);
     const u = userDetails.get(socket.id);
     if (u) { u.status = 'SEARCHING'; u.myGender = myGender; }
@@ -187,20 +188,14 @@ socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) =>
     if (!tryMatch()) {
       globalQueue.push({ id: socket.id, myGender, searchGender, countryCode, selectedCountry });
     }
-});
+  });
 
-socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLikes }) => {
+  socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLikes }) => {
     const me = userDetails.get(socket.id);
     const partner = userDetails.get(targetId);
 
-    // Temel güvenlik: Gönderen veya alan yoksa çık
     if (!me || !partner) return;
 
-    // 1. SAYAÇ GÜNCELLEME (Veritabanı İşlemi)
-    // Koşullar: 
-    // - increaseCounter true gelmeli (frontend'den ilk basışta gelir)
-    // - Gönderen kayıtlı olmalı (me.isRegistered)
-    // - Alan kayıtlı olmalı (partner.dbId var olmalı)
     if (increaseCounter && me.isRegistered && partner.dbId) {
         try {
             await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
@@ -210,37 +205,25 @@ socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLike
             console.error("Like update error:", err);
         }
     }
-
-    // 2. GÖRSEL EFEKT (Soket Yayını)
-    // BU SATIR IF BLOĞUNUN DIŞINDA OLMALI!
-    // Partner ister kayıtlı olsun ister kayıtsız, bu sinyal ona gider ve kalpler uçar.
     io.to(targetId).emit('receive_like', { newLikes: partner.likes, senderSessionLikes: currentSessionLikes });
-});
+  });
 
-
-// --- YENİ: Kullanıcı Raporlama Sistemi ---
   socket.on('report_user', async ({ reportedId, screenshot }) => {
     const reporter = userDetails.get(socket.id);
     const reported = userDetails.get(reportedId);
 
     if (reported) {
       try {
-        // MongoDB'ye kaydet
         const newReport = new Report({
           reporterId: socket.id,
           reportedId: reportedId,
           reportedIP: reported.ip,
-          screenshot: screenshot, // Frontend'den gelen Base64 resim
+          screenshot: screenshot, 
           date: new Date()
         });
         await newReport.save();
-
-        // Raporlanan kullanıcının detaylarındaki rapor sayısını artır (Admin panel için)
         reported.reports = (reported.reports || 0) + 1;
-
-        // Log kaydı tut
-        new Log({ userId: socket.id, userIP: reporter.ip, action: 'REPORTED', targetId: reportedId }).save();
-        
+        new Log({ userId: socket.id, userIP: reporter ? reporter.ip : 'N/A', action: 'REPORTED', targetId: reportedId }).save();
         console.log(`⚠️ Kullanıcı Raporlandı: ${reportedId}`);
       } catch (err) {
         console.error("Rapor kaydedilemedi:", err);
@@ -256,131 +239,110 @@ socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLike
     if (partnerId) io.to(partnerId).emit('partner_disconnected');
   });
 
-
-          // --- ADMIN PANELİ API ROTALARI ---
-
-        // 1. Aktif Kullanıcıları Listele
-        app.get('/api/admin/active-users', (req, res) => {
-          const users = Array.from(userDetails.values());
-          res.json(users);
-        });
-
-        // 2. Tüm Raporları Getir
-        app.get('/api/reports', async (req, res) => {
-          const reports = await Report.find().sort({ date: -1 }).limit(50);
-          res.json(reports);
-        });
-
-        // 3. Rapor Sil
-        app.delete('/api/reports/:id', async (req, res) => {
-          await Report.findByIdAndDelete(req.params.id);
-          res.json({ success: true });
-        });
-
-        // 4. Yasaklıları Getir
-        app.get('/api/bans', async (req, res) => {
-          const bans = await Ban.find();
-          res.json(bans);
-        });
-
-        // 5. IP Yasakla
-        app.post('/api/ban-user', async (req, res) => {
-          const { ip, reason } = req.body;
-          const newBan = new Ban({ ip, reason: reason || "Admin tarafından yasaklandı" });
-          await newBan.save();
-          res.json({ success: true });
-        });
-
-        // 6. Ban Kaldır
-        app.delete('/api/bans/:ip', async (req, res) => {
-          await Ban.findOneAndDelete({ ip: req.params.ip });
-          res.json({ success: true });
-        });
-
-        // 7. Genel İstatistikler
-        app.get('/api/admin/stats', async (req, res) => {
-          const activeUsers = userDetails.size;
-          const totalBans = await Ban.countDocuments();
-          const pendingReports = await Report.countDocuments();
-          res.json({ activeUsers, totalBans, pendingReports, totalMatchesToday: 0 });
-        });
-
-        // Aktif Eşleşmeleri (Maçları) Listele
-        app.get('/api/admin/active-matches', (req, res) => {
-          const matches = global.liveMatches ? Array.from(global.liveMatches.values()) : [];
-          res.json(matches);
-        });
-
-        // Admin Panelinden Gelen "Görüşmeyi Bitir" İsteği
-          app.post('/api/admin/kill-match', (req, res) => {
-              const { matchId, user1Id, user2Id } = req.body;
-
-              // Her iki kullanıcıyı da sistemden "Partnerin Ayrıldı" diyerek kopar
-              io.to(user1Id).emit('partner_left_auto_next');
-              io.to(user2Id).emit('partner_left_auto_next');
-
-              // Eşleşmeyi canlı listeden sil
-              if (global.liveMatches) {
-                  global.liveMatches.delete(matchId);
-              }
-
-              console.log(`🛠️ Admin müdahalesi: Match ${matchId} sonlandırıldı.`);
-              res.json({ success: true });
-          });
-
-
-  // --- YENİ: Bir kullanıcı Next dediğinde ---
   socket.on('next_user', () => {
     const partnerId = activeMatches.get(socket.id);
     
     if (partnerId) {
-      // 1. Karşı tarafa "Partnerin ayrıldı, sen de aramaya başla" sinyali gönder
       io.to(partnerId).emit('partner_left_auto_next');
       
-      // 2. Eşleşme kaydını her iki taraftan da sil
       activeMatches.delete(socket.id);
       activeMatches.delete(partnerId);
       
-      // 3. Partnerin durumunu SEARCHING yap (opsiyonel, frontend handle edecek)
       const p = userDetails.get(partnerId);
       if (p) p.status = 'SEARCHING';
+
+      // Live match temizliği
+      const matchId1 = `match_${socket.id}_${partnerId}`;
+      const matchId2 = `match_${partnerId}_${socket.id}`;
+      global.liveMatches.delete(matchId1);
+      global.liveMatches.delete(matchId2);
     }
 
-    // 4. Kendisini arama kuyruğundan temizle (ne olur ne olmaz)
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
     const u = userDetails.get(socket.id);
     if (u) u.status = 'IDLE';
-
-    const matchId1 = `match_${socket.id}_${partnerId}`;
-    const matchId2 = `match_${partnerId}_${socket.id}`;
-    global.liveMatches.delete(matchId1);
-    global.liveMatches.delete(matchId2);
-
   });
 
   socket.on('signal', (data) => {
-        io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
-      });
+    io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
+  });
 
-      socket.on('disconnect', () => {
-        const partnerId = activeMatches.get(socket.id);
-        if (partnerId) {
-          // Bağlantı koptuğunda da partneri otomatik aramaya yönlendir
-          io.to(partnerId).emit('partner_left_auto_next');
-          activeMatches.delete(partnerId);
-        }
-        
-        userDetails.delete(socket.id);
-        globalQueue = globalQueue.filter(u => u.id !== socket.id);
-        activeMatches.delete(socket.id);
+  socket.on('disconnect', () => {
+    const partnerId = activeMatches.get(socket.id);
+    if (partnerId) {
+      io.to(partnerId).emit('partner_left_auto_next');
+      activeMatches.delete(partnerId);
 
-        const matchId1 = `match_${socket.id}_${partnerId}`;
-        const matchId2 = `match_${partnerId}_${socket.id}`;
-        global.liveMatches.delete(matchId1);
-        global.liveMatches.delete(matchId2);
-      });
+      const matchId1 = `match_${socket.id}_${partnerId}`;
+      const matchId2 = `match_${partnerId}_${socket.id}`;
+      global.liveMatches.delete(matchId1);
+      global.liveMatches.delete(matchId2);
+    }
+    
+    userDetails.delete(socket.id);
+    globalQueue = globalQueue.filter(u => u.id !== socket.id);
+    activeMatches.delete(socket.id);
+  });
+});
 
+// --- ADMIN PANELİ API ROTALARI (Socket Dışına Taşındı) ---
 
+app.get('/api/admin/active-users', (req, res) => {
+  const users = Array.from(userDetails.values());
+  res.json(users);
+});
+
+app.get('/api/reports', async (req, res) => {
+  const reports = await Report.find().sort({ date: -1 }).limit(50);
+  res.json(reports);
+});
+
+app.delete('/api/reports/:id', async (req, res) => {
+  await Report.findByIdAndDelete(req.params.id);
+  res.json({ success: true });
+});
+
+app.get('/api/bans', async (req, res) => {
+  const bans = await Ban.find();
+  res.json(bans);
+});
+
+app.post('/api/ban-user', async (req, res) => {
+  const { ip, reason } = req.body;
+  const newBan = new Ban({ ip, reason: reason || "Admin tarafından yasaklandı" });
+  await newBan.save();
+  res.json({ success: true });
+});
+
+app.delete('/api/bans/:ip', async (req, res) => {
+  await Ban.findOneAndDelete({ ip: req.params.ip });
+  res.json({ success: true });
+});
+
+app.get('/api/admin/stats', async (req, res) => {
+  const activeUsers = userDetails.size;
+  const totalBans = await Ban.countDocuments();
+  const pendingReports = await Report.countDocuments();
+  res.json({ activeUsers, totalBans, pendingReports, totalMatchesToday: 0 });
+});
+
+app.get('/api/admin/active-matches', (req, res) => {
+  const matches = global.liveMatches ? Array.from(global.liveMatches.values()) : [];
+  res.json(matches);
+});
+
+app.post('/api/admin/kill-match', (req, res) => {
+    const { matchId, user1Id, user2Id } = req.body;
+
+    io.to(user1Id).emit('partner_left_auto_next');
+    io.to(user2Id).emit('partner_left_auto_next');
+
+    if (global.liveMatches) {
+        global.liveMatches.delete(matchId);
+    }
+
+    console.log(`🛠️ Admin müdahalesi: Match ${matchId} sonlandırıldı.`);
+    res.json({ success: true });
 });
 
 const PORT = process.env.PORT || 5001;
