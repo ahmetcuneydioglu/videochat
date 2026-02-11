@@ -6,7 +6,8 @@ import { countries as rawCountries } from 'countries-list';
 import { 
   Video, VideoOff, Mic, MicOff, RefreshCw, 
   User, Flag, Settings, MessageCircle, X, 
-  Play, Square, SkipForward, Globe, Check, Heart, ShieldAlert, LogIn, Mars, Venus
+  Play, Square, SkipForward, Globe, Check, Heart, ShieldAlert, LogIn,
+  Mars, Venus 
 } from 'lucide-react';
 
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
@@ -15,6 +16,7 @@ if (typeof window !== "undefined" && typeof (window as any).global === "undefine
   (window as any).global = window;
 }
 
+// Socket bağlantısını component dışında tanımlıyoruz (Singleton)
 const socket = io("https://videochat-1qxi.onrender.com/", { 
   transports: ["websocket"], 
   secure: true,
@@ -32,16 +34,21 @@ interface ReportItem {
 
 export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
+  
+  // Refs
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const mobileChatEndRef = useRef<HTMLDivElement>(null);
   const peerRef = useRef<Peer.Instance | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  
+  // State Ref Pattern (Socket dinleyicilerinde güncel state'e erişmek için)
+  const isActiveRef = useRef(false);
 
+  // States
   const [reportHistory, setReportHistory] = useState<ReportItem[]>([]);
   const [showReportModal, setShowReportModal] = useState(false);
-
   const [isActive, setIsActive] = useState(false);
   const [showModal, setShowModal] = useState(true);
   const [showOptions, setShowOptions] = useState(false);
@@ -78,6 +85,11 @@ export default function Home() {
   
   const [hasLiked, setHasLiked] = useState(false); 
   const [flyingHearts, setFlyingHearts] = useState<{ id: number; left: number; delay: number; color: string }[]>([]);
+
+  // State güncellendiğinde Ref'i de güncelle (Socket için kritik)
+  useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
 
   const getFlagEmoji = (countryCode: string) => {
     if (countryCode === "all" || countryCode === "UN") return "🌐";
@@ -133,40 +145,74 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // SOCKET EVENTS - isActive dependency'sini kaldırdık, Ref kullanıyoruz
   useEffect(() => {
-  if (!socket) return;
+    if (!socket) return;
 
+    socket.on('partner_left_auto_next', () => {
+        console.log("Partner ayrıldı, otomatik olarak bir sonrakine geçiliyor...");
+        if (peerRef.current) {
+            peerRef.current.destroy();
+            peerRef.current = null;
+        }
+        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+        handleNext(); 
+    });
 
-  socket.on('partner_left_auto_next', () => {
-    console.log("Partner ayrıldı, otomatik olarak bir sonrakine geçiliyor...");
-    
-    // 1. Mevcut görüntüyü ve bağlantıyı temizle
-    if (peerRef.current) {
-        peerRef.current.destroy();
-        peerRef.current = null;
-    }
-    
-    // 2. Uzak videoyu temizle
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    socket.on("partner_found", (data) => {
+        // Ref kullanarak güncel state kontrolü yapıyoruz, böylece listener kopmuyor
+        if (!isActiveRef.current) return;
+        
+        setMessages([]); 
+        setPartnerId(data.partnerId); 
+        setPartnerGender(data.partnerGender || 'male'); 
+        setPartnerLikes(data.partnerLikes || 0); 
+        setHasLiked(false); 
+        
+        const countryCode = (data.country || "UN").toUpperCase();
+        const countryObj = allCountries.find(c => c.id === countryCode);
+        setPartnerCountry(countryObj ? countryObj.name : "Global");
+        setPartnerFlag(countryObj ? countryObj.flag : "🌐");
+        
+        setIsSearching(false); 
+        initiatePeer(data.partnerId, data.initiator);
+        setMatchNotification(`Matched with ${countryObj?.name || 'Global'}`);
+        setTimeout(() => setMatchNotification(null), 4000);
+    });
 
-    // 3. Hiç beklemeden bir sonraki kullanıcıyı aramaya başla
-    handleNext(); 
-  });
+    socket.on("receive_like", (data) => {
+      if (data.newLikes !== undefined) setPartnerLikes(data.newLikes);
+      if (data.senderSessionLikes) {
+        setPartnerSessionLikes(data.senderSessionLikes);
+      }
+      setMatchNotification("Someone loved your vibe! ❤️");
+      triggerHeartAnimation(); 
+      setTimeout(() => setMatchNotification(null), 3000);
+    });
 
-  return () => {
-    socket.off('partner_left_auto_next');
-  };
-}, [socket]);
+    socket.on("partner_disconnected", () => {
+      cleanUpPeer();
+      if (isActiveRef.current) setTimeout(() => handleNext(), 1000);
+    });
+
+    socket.on("signal", (data) => {
+        if (peerRef.current) peerRef.current.signal(data.signal);
+    });
+
+    return () => {
+        socket.off('partner_left_auto_next');
+        socket.off("partner_found"); 
+        socket.off("partner_disconnected"); 
+        socket.off("signal"); 
+        socket.off("receive_like");
+    };
+  }, [allCountries]); // isActive buraya EKLENMEMELİ
 
   const startMedia = async (mode: "user" | "environment" = facingMode) => {
     try {
-      // 1. KONTROL: Eğer zaten çalışan bir stream varsa ve kamera yönü (mode) aynıysa hiçbir şey yapma
       if (streamRef.current && streamRef.current.active) {
-        // Eğer zaten bir stream varsa fonksiyonu burada bitir, böylece yeni izin istemez
         return; 
       }
-
-      // Eğer stream yoksa veya kapanmışsa yeni bir tane başlat
       const newStream = await navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: mode }, 
         audio: true 
@@ -197,79 +243,23 @@ export default function Home() {
     }, 2500);
   };
 
-  useEffect(() => {
-    if (isMounted) startMedia();
-
-    socket.on("partner_found", (data) => {
-        if (!isActive) return;
-        setMessages([]); 
-        setPartnerId(data.partnerId); 
-        setPartnerGender(data.partnerGender || 'male'); 
-        setPartnerLikes(data.partnerLikes || 0); 
-        setHasLiked(false); 
-        
-        const countryCode = (data.country || "UN").toUpperCase();
-        const countryObj = allCountries.find(c => c.id === countryCode);
-        setPartnerCountry(countryObj ? countryObj.name : "Global");
-        setPartnerFlag(countryObj ? countryObj.flag : "🌐");
-        
-        setIsSearching(false); 
-        initiatePeer(data.partnerId, data.initiator);
-        setMatchNotification(`Matched with ${countryObj?.name || 'Global'}`);
-        setTimeout(() => setMatchNotification(null), 4000);
-    });
-
-    socket.on("receive_like", (data) => {
-      if (data.newLikes !== undefined) setPartnerLikes(data.newLikes);
-      if (data.senderSessionLikes) {
-        setPartnerSessionLikes(data.senderSessionLikes);
-      }
-      setMatchNotification("Someone loved your vibe! ❤️");
-      triggerHeartAnimation(); 
-      setTimeout(() => setMatchNotification(null), 3000);
-    });
-
-    socket.on("partner_disconnected", () => {
-      cleanUpPeer();
-      if (isActive) setTimeout(() => handleNext(), 1000);
-    });
-
-    socket.on("signal", (data) => {
-        if (peerRef.current) peerRef.current.signal(data.signal);
-    });
-
-    return () => { 
-      socket.off("partner_found"); 
-      socket.off("partner_disconnected"); 
-      socket.off("signal"); 
-      socket.off("receive_like");
-    };
-  }, [isMounted, allCountries, isActive]);
-
   const captureAndAddToHistory = () => {
-    // remoteVideoRef'in yüklü ve video verisinin hazır olduğundan emin ol
     if (partnerId && remoteVideoRef.current && remoteVideoRef.current.readyState === 4) {
         try {
             const canvas = document.createElement("canvas");
-            // Videonun gerçek boyutlarını al
             canvas.width = remoteVideoRef.current.videoWidth;
             canvas.height = remoteVideoRef.current.videoHeight;
-            
             const ctx = canvas.getContext("2d");
             if (ctx) {
                 ctx.drawImage(remoteVideoRef.current, 0, 0);
                 const screenshot = canvas.toDataURL("image/jpeg", 0.4);
-
-                // Eğer screenshot çok kısaysa (boş veri üretildiyse) ekleme yapma
                 if (screenshot.length < 1000) return;
-
                 const newEntry = { 
                   id: partnerId, 
                   country: partnerCountry || "Unknown", 
                   flag: partnerFlag || "🌐", 
                   screenshot 
                 };
-
                 setReportHistory(prev => {
                     if (prev.some(p => p.id === partnerId)) return prev;
                     return [newEntry, ...prev].slice(0, 3);
@@ -279,11 +269,10 @@ export default function Home() {
             console.error("Ekran görüntüsü alınamadı:", e);
         }
     }
-};
+  };
 
   const cleanUpPeer = () => {
     captureAndAddToHistory();
-
     if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     setPartnerId(null);
@@ -309,7 +298,7 @@ export default function Home() {
   }
 
   const handleNext = () => {
-    if (!isActive) return;
+    if (!isActiveRef.current) return;
     cleanUpPeer();
     setIsSearching(true);
     socket.emit("find_partner", { myGender, searchGender, selectedCountry });
@@ -320,7 +309,6 @@ export default function Home() {
     triggerHeartAnimation();
     const updatedLikes = sessionLikes + 1; 
     setSessionLikes(updatedLikes);
-
     if (partnerId) {
       const shouldIncrease = dbUserId ? !hasLiked : false;
       socket.emit("like_partner", { 
@@ -339,18 +327,15 @@ export default function Home() {
     setShowReportModal(true);
   };
 
+  // DÜZELTİLEN FONKSİYON: Raporu Socket ile gönderir
   const sendFinalReport = (targetUser: ReportItem) => {
-    // Backend'de socket.on('report_user') dinleyicisi var, oraya gönderiyoruz.
     if (socket) {
       socket.emit("report_user", {
         reportedId: targetUser.id,
         screenshot: targetUser.screenshot
       });
-      
       alert("Kullanıcı başarıyla bildirildi ve incelenmek üzere işaretlendi.");
       setShowReportModal(false);
-      
-      // Eğer raporladığımız kişi hala karşımızdaysa, otomatik geç
       if (targetUser.id === partnerId) handleNext();
     }
   };
@@ -358,8 +343,15 @@ export default function Home() {
   const toggleActive = () => {
     const nextState = !isActive;
     setIsActive(nextState);
-    if (nextState) handleNext();
-    else { cleanUpPeer(); setIsSearching(false); socket.emit("stop_search"); }
+    if (nextState) {
+        setIsSearching(true);
+        startMedia();
+        socket.emit("find_partner", { myGender, searchGender, selectedCountry });
+    } else { 
+        cleanUpPeer(); 
+        setIsSearching(false); 
+        socket.emit("stop_search"); 
+    }
   };
 
   const sendMessage = (e: any) => {
@@ -583,14 +575,9 @@ export default function Home() {
                 <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-xl">
                   <button 
                     onClick={() => {
-                      // 1. Sistemi aktif moda al ve arama animasyonunu aç
                       setIsActive(true);
                       setIsSearching(true);
-
-                      // 2. Kamerayı başlat (Zaten açıksa izin istemeyecek)
                       startMedia();
-
-                      // 3. Sunucuya doğrudan "ara" komutu gönder
                       if (socket) {
                         socket.emit("find_partner", { 
                           myGender: myGender, 
@@ -723,43 +710,41 @@ export default function Home() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    {/* ERKEK BUTONU */}
-                    <button onClick={() => setMyGender("male")} className={`relative overflow-hidden flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "male" ? "bg-blue-600/10 border-blue-500 text-blue-500 shadow-lg shadow-blue-500/20" : "bg-black/20 border-white/5 text-zinc-500 hover:bg-white/5"}`}>
-                        <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${myGender === "male" ? "bg-blue-500 text-white shadow-[0_0_20px_rgba(59,130,246,0.5)] scale-110" : "bg-zinc-800"}`}>
-                            <Mars size={32} strokeWidth={2.5} />
-                        </div>
-                        <span className="text-[10px] uppercase font-black tracking-widest">Male</span>
-                        {myGender === "male" && <div className="absolute inset-0 border-2 border-blue-500 rounded-[32px] animate-pulse"></div>}
-                    </button>
+                      {/* ERKEK BUTONU (3D STYLE) */}
+                      <button onClick={() => setMyGender("male")} className={`relative overflow-hidden flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "male" ? "bg-blue-600/10 border-blue-500 text-blue-500 shadow-lg shadow-blue-500/20" : "bg-black/20 border-white/5 text-zinc-500 hover:bg-white/5"}`}>
+                          <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${myGender === "male" ? "bg-blue-500 text-white shadow-[0_0_20px_rgba(59,130,246,0.5)] scale-110" : "bg-zinc-800"}`}>
+                              <Mars size={32} strokeWidth={2.5} />
+                          </div>
+                          <span className="text-[10px] uppercase font-black tracking-widest">Male</span>
+                          {myGender === "male" && <div className="absolute inset-0 border-2 border-blue-500 rounded-[32px] animate-pulse"></div>}
+                      </button>
 
-                    {/* KADIN BUTONU */}
-                    <button onClick={() => setMyGender("female")} className={`relative overflow-hidden flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "female" ? "bg-pink-600/10 border-pink-500 text-pink-500 shadow-lg shadow-pink-500/20" : "bg-black/20 border-white/5 text-zinc-500 hover:bg-white/5"}`}>
-                        <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${myGender === "female" ? "bg-pink-500 text-white shadow-[0_0_20px_rgba(236,72,153,0.5)] scale-110" : "bg-zinc-800"}`}>
-                            <Venus size={32} strokeWidth={2.5} />
-                        </div>
-                        <span className="text-[10px] uppercase font-black tracking-widest">Female</span>
-                        {myGender === "female" && <div className="absolute inset-0 border-2 border-pink-500 rounded-[32px] animate-pulse"></div>}
-                    </button>
-                </div>
+                      {/* KADIN BUTONU (3D STYLE) */}
+                      <button onClick={() => setMyGender("female")} className={`relative overflow-hidden flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "female" ? "bg-pink-600/10 border-pink-500 text-pink-500 shadow-lg shadow-pink-500/20" : "bg-black/20 border-white/5 text-zinc-500 hover:bg-white/5"}`}>
+                          <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${myGender === "female" ? "bg-pink-500 text-white shadow-[0_0_20px_rgba(236,72,153,0.5)] scale-110" : "bg-zinc-800"}`}>
+                              <Venus size={32} strokeWidth={2.5} />
+                          </div>
+                          <span className="text-[10px] uppercase font-black tracking-widest">Female</span>
+                          {myGender === "female" && <div className="absolute inset-0 border-2 border-pink-500 rounded-[32px] animate-pulse"></div>}
+                      </button>
+                  </div>
 
                     <button 
                       onClick={() => { 
                         if(!myGender) return alert("Select gender!"); 
                         
-                        // 1. Durumları güncelle
                         setShowModal(false); 
                         setIsActive(true); 
                         setIsSearching(true); 
-
-                        // 2. Kamerayı garantiye al
                         startMedia();
 
-                        // 3. handleNext'i beklemek yerine doğrudan aramayı başlat
-                        socket.emit("find_partner", { 
-                          myGender: myGender, 
-                          searchGender: searchGender, 
-                          selectedCountry: selectedCountry 
-                        });
+                        if (socket) {
+                          socket.emit("find_partner", { 
+                            myGender: myGender, 
+                            searchGender: searchGender, 
+                            selectedCountry: selectedCountry 
+                          });
+                        }
                       }} 
                       className="w-full bg-zinc-100 text-black py-5 rounded-[24px] font-black text-lg hover:bg-blue-600 hover:text-white transition-all active:scale-95 uppercase"
                     >
