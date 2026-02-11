@@ -6,7 +6,7 @@ import { countries as rawCountries } from 'countries-list';
 import { 
   Video, VideoOff, Mic, MicOff, RefreshCw, 
   User, Flag, Settings, MessageCircle, X, 
-  Play, Square, SkipForward, Globe, Check, Heart, ShieldAlert, LogIn
+  Play, Square, SkipForward, Globe, Check, Heart, ShieldAlert, LogIn, Mars, Venus
 } from 'lucide-react';
 
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
@@ -340,19 +340,19 @@ export default function Home() {
   };
 
   const sendFinalReport = (targetUser: ReportItem) => {
-    fetch("https://videochat-1qxi.onrender.com/api/report-user", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        reporterId: socket.id, 
-        reportedId: targetUser.id, 
-        screenshot: targetUser.screenshot 
-      })
-    }).then(() => {
-      alert("Kullanıcı başarıyla bildirildi!");
+    // Backend'de socket.on('report_user') dinleyicisi var, oraya gönderiyoruz.
+    if (socket) {
+      socket.emit("report_user", {
+        reportedId: targetUser.id,
+        screenshot: targetUser.screenshot
+      });
+      
+      alert("Kullanıcı başarıyla bildirildi ve incelenmek üzere işaretlendi.");
       setShowReportModal(false);
+      
+      // Eğer raporladığımız kişi hala karşımızdaysa, otomatik geç
       if (targetUser.id === partnerId) handleNext();
-    });
+    }
   };
 
   const toggleActive = () => {
@@ -723,15 +723,25 @@ export default function Home() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                      <button onClick={() => setMyGender("male")} className={`flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "male" ? "bg-blue-600/10 border-blue-500 text-blue-500 shadow-lg shadow-blue-500/20" : "bg-black/20 border-white/5 text-zinc-500"}`}>
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${myGender === "male" ? "bg-blue-500 text-white" : "bg-zinc-800"}`}>♂</div>
-                          <span className="text-[10px] uppercase font-black">Male</span>
-                      </button>
-                      <button onClick={() => setMyGender("female")} className={`flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "female" ? "bg-pink-600/10 border-pink-500 text-pink-500 shadow-lg shadow-pink-500/20" : "bg-black/20 border-white/5 text-zinc-500"}`}>
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${myGender === "female" ? "bg-pink-500 text-white" : "bg-zinc-800"}`}>♀</div>
-                          <span className="text-[10px] uppercase font-black">Female</span>
-                      </button>
-                  </div>
+                    {/* ERKEK BUTONU */}
+                    <button onClick={() => setMyGender("male")} className={`relative overflow-hidden flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "male" ? "bg-blue-600/10 border-blue-500 text-blue-500 shadow-lg shadow-blue-500/20" : "bg-black/20 border-white/5 text-zinc-500 hover:bg-white/5"}`}>
+                        <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${myGender === "male" ? "bg-blue-500 text-white shadow-[0_0_20px_rgba(59,130,246,0.5)] scale-110" : "bg-zinc-800"}`}>
+                            <Mars size={32} strokeWidth={2.5} />
+                        </div>
+                        <span className="text-[10px] uppercase font-black tracking-widest">Male</span>
+                        {myGender === "male" && <div className="absolute inset-0 border-2 border-blue-500 rounded-[32px] animate-pulse"></div>}
+                    </button>
+
+                    {/* KADIN BUTONU */}
+                    <button onClick={() => setMyGender("female")} className={`relative overflow-hidden flex flex-col items-center gap-3 py-8 rounded-[32px] font-bold border-2 transition-all active:scale-95 ${myGender === "female" ? "bg-pink-600/10 border-pink-500 text-pink-500 shadow-lg shadow-pink-500/20" : "bg-black/20 border-white/5 text-zinc-500 hover:bg-white/5"}`}>
+                        <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${myGender === "female" ? "bg-pink-500 text-white shadow-[0_0_20px_rgba(236,72,153,0.5)] scale-110" : "bg-zinc-800"}`}>
+                            <Venus size={32} strokeWidth={2.5} />
+                        </div>
+                        <span className="text-[10px] uppercase font-black tracking-widest">Female</span>
+                        {myGender === "female" && <div className="absolute inset-0 border-2 border-pink-500 rounded-[32px] animate-pulse"></div>}
+                    </button>
+                </div>
+
                     <button 
                       onClick={() => { 
                         if(!myGender) return alert("Select gender!"); 

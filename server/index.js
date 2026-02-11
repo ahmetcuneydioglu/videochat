@@ -128,7 +128,10 @@ io.on('connection', async (socket) => {
   const isBanned = await Ban.findOne({ ip: userIP });
   if (isBanned) return socket.disconnect();
 
-  socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
+  // Dosyanın en üst kısımlarına, değişken tanımlarının yanına ekle:
+if (!global.liveMatches) global.liveMatches = new Map();
+
+socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
     globalQueue = globalQueue.filter(item => item.id !== socket.id);
     const u = userDetails.get(socket.id);
     if (u) { u.status = 'SEARCHING'; u.myGender = myGender; }
@@ -153,6 +156,15 @@ io.on('connection', async (socket) => {
         if (myDetails) myDetails.status = 'BUSY';
         if (pDetails) pDetails.status = 'BUSY';
 
+        // --- ADMİN PANELİ İÇİN CANLI EŞLEŞME KAYDI ---
+        const matchId = `match_${socket.id}_${partner.id}`;
+        global.liveMatches.set(matchId, {
+            id: matchId,
+            user1: { id: socket.id, country: countryCode, ip: userIP },
+            user2: { id: partner.id, country: partner.countryCode, ip: pDetails ? pDetails.ip : 'N/A' },
+            startTime: new Date()
+        });
+
         io.to(socket.id).emit('partner_found', { 
             partnerId: partner.id, 
             initiator: true, 
@@ -175,8 +187,7 @@ io.on('connection', async (socket) => {
     if (!tryMatch()) {
       globalQueue.push({ id: socket.id, myGender, searchGender, countryCode, selectedCountry });
     }
-  });
-
+});
 
 socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLikes }) => {
     const me = userDetails.get(socket.id);
@@ -294,6 +305,29 @@ socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLike
           res.json({ activeUsers, totalBans, pendingReports, totalMatchesToday: 0 });
         });
 
+        // Aktif Eşleşmeleri (Maçları) Listele
+        app.get('/api/admin/active-matches', (req, res) => {
+          const matches = global.liveMatches ? Array.from(global.liveMatches.values()) : [];
+          res.json(matches);
+        });
+
+        // Admin Panelinden Gelen "Görüşmeyi Bitir" İsteği
+          app.post('/api/admin/kill-match', (req, res) => {
+              const { matchId, user1Id, user2Id } = req.body;
+
+              // Her iki kullanıcıyı da sistemden "Partnerin Ayrıldı" diyerek kopar
+              io.to(user1Id).emit('partner_left_auto_next');
+              io.to(user2Id).emit('partner_left_auto_next');
+
+              // Eşleşmeyi canlı listeden sil
+              if (global.liveMatches) {
+                  global.liveMatches.delete(matchId);
+              }
+
+              console.log(`🛠️ Admin müdahalesi: Match ${matchId} sonlandırıldı.`);
+              res.json({ success: true });
+          });
+
 
   // --- YENİ: Bir kullanıcı Next dediğinde ---
   socket.on('next_user', () => {
@@ -316,6 +350,12 @@ socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLike
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
     const u = userDetails.get(socket.id);
     if (u) u.status = 'IDLE';
+
+    const matchId1 = `match_${socket.id}_${partnerId}`;
+    const matchId2 = `match_${partnerId}_${socket.id}`;
+    global.liveMatches.delete(matchId1);
+    global.liveMatches.delete(matchId2);
+
   });
 
   socket.on('signal', (data) => {
@@ -333,6 +373,11 @@ socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLike
         userDetails.delete(socket.id);
         globalQueue = globalQueue.filter(u => u.id !== socket.id);
         activeMatches.delete(socket.id);
+
+        const matchId1 = `match_${socket.id}_${partnerId}`;
+        const matchId2 = `match_${partnerId}_${socket.id}`;
+        global.liveMatches.delete(matchId1);
+        global.liveMatches.delete(matchId2);
       });
 
 
