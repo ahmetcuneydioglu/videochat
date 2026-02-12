@@ -288,7 +288,7 @@ export default function Home() {
   function initiatePeer(targetId: string, initiator: boolean) {
     if (!streamRef.current) return;
     const peer = new Peer({ 
-        initiator, trickle: false, stream: streamRef.current,
+        initiator, trickle: true, stream: streamRef.current,
         config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] }
     });
     peer.on("signal", (data) => socket.emit("signal", { to: targetId, signal: data }));
