@@ -214,9 +214,14 @@ export default function Home() {
         return; 
       }
       const newStream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: mode }, 
-        audio: true 
-      });
+          video: { 
+            facingMode: mode,
+            width: { ideal: 640 },  // Hız için ideal
+            height: { ideal: 480 }, // Kare değil dikdörtgen daha iyi sıkışır
+            frameRate: { ideal: 30, max: 30 }
+          }, 
+          audio: true 
+        });
       
       streamRef.current = newStream;
       if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
