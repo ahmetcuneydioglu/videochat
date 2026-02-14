@@ -290,26 +290,67 @@ export default function Home() {
     setPartnerSessionLikes(0);
   };
 
-  function initiatePeer(targetId: string, initiator: boolean) {
-    if (!streamRef.current) return;
-    const peer = new Peer({ 
-        initiator, trickle: true, stream: streamRef.current,
-        config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] }
-    });
-    peer.on("signal", (data) => socket.emit("signal", { to: targetId, signal: data }));
-    peer.on("stream", (remStream) => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remStream; });
-    peer.on("data", (data) => setMessages(prev => [...prev, { sender: "Stranger", text: new TextDecoder().decode(data) }]));
-    peerRef.current = peer;
-  }
+        function initiatePeer(targetId: string, initiator: boolean) {
+          if (!streamRef.current) {
+              console.error("❌ HATA: Kamera/Mikrofon akışı bulunamadı. Peer başlatılamaz.");
+              return;
+          }
+          
+          console.log(`🔗 Peer başlatılıyor... Hedef ID: ${targetId}, Başlatan Ben miyim?: ${initiator}`);
+
+          const peer = new Peer({ 
+              initiator, 
+              trickle: true, 
+              stream: streamRef.current,
+              config: { 
+                  iceServers: [
+                      { urls: 'stun:stun.l.google.com:19302' }, 
+                      { urls: 'stun:stun1.l.google.com:19302' },
+                      // Eğer Render'da veya bazı ağlarda STUN engelleniyorsa diye yedek ekliyoruz
+                      { urls: 'stun:stun.l.google.com:19305' },
+                      { urls: 'stun:stun.sipgate.net:10000' }
+                  ] 
+              }
+          });
+
+          peer.on("signal", (data) => {
+              console.log(`📡 Sinyal gönderiliyor (Hedef: ${targetId}, Tip: ${data.type})`);
+              socket.emit("signal", { to: targetId, signal: data });
+          });
+
+          peer.on("stream", (remStream) => { 
+              console.log("✅ Karşı tarafın video akışı (Stream) başarıyla alındı.");
+              if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remStream; 
+          });
+
+          peer.on("data", (data) => {
+              setMessages(prev => [...prev, { sender: "Stranger", text: new TextDecoder().decode(data) }]);
+          });
+
+          peer.on("connect", () => {
+              console.log("🟢 WebRTC Bağlantısı başarıyla kuruldu! Görüntülü sohbet başladı.");
+          });
+
+          peer.on("error", (err) => {
+              console.error("❌ WebRTC Bağlantı Hatası:", err);
+              // Hata durumunda da temizlik yapıp yeni partnere geçmek iyi bir pratiktir
+              cleanUpPeer();
+              handleNext();
+          });
+
+          peerRef.current = peer;
+        }
 
   const handleNext = () => {
     if (!isActiveRef.current) return;
     cleanUpPeer();
     setIsSearching(true);
+    // YERLERİ DEĞİŞTİ: Önce eskisini kopar, SONRA aramaya başla
+    socket.emit("next_user"); 
     socket.emit("find_partner", { myGender, searchGender, selectedCountry });
-    socket.emit("next_user");
   };
 
+  
   const handleLike = () => {
     triggerHeartAnimation();
     const updatedLikes = sessionLikes + 1; 
