@@ -328,9 +328,19 @@ app.get('/api/bans', async (req, res) => {
 });
 
 app.post('/api/ban-user', async (req, res) => {
-  const { ip, reason } = req.body;
+  const { ip, reportedId, reason } = req.body;
+  
+  // 1. Veritabanına kaydet
   const newBan = new Ban({ ip, reason: reason || "Admin tarafından yasaklandı" });
   await newBan.save();
+
+  // 2. Kullanıcıyı anlık olarak Socket'ten kov ve uyar
+  if (reportedId) {
+    io.to(reportedId).emit('account_banned', { reason });
+    const s = io.sockets.sockets.get(reportedId);
+    if (s) s.disconnect(); 
+  }
+
   res.json({ success: true });
 });
 
