@@ -8,7 +8,17 @@ const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
 
-app.use(cors({ origin: "*", credentials: true }));
+const allowedOrigins = [
+  "https://www.omegpt.com", 
+  "https://omegpt.com", 
+  "http://localhost:3000"
+];
+
+app.use(cors({ 
+  origin: allowedOrigins, 
+  credentials: true 
+}));
+
 app.use(express.json({ limit: '10mb' }));
 
 app.use((req, res, next) => {
@@ -77,7 +87,7 @@ app.post('/api/auth/social-login', async (req, res) => {
 
 const io = new Server(server, {
   cors: {
-    origin: "*", 
+    origin: allowedOrigins, // <-- DÜZELTİLDİ
     methods: ["GET", "POST"],
     credentials: true
   },
