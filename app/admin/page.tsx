@@ -19,9 +19,11 @@ export default function AdminDashboard() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [userHistory, setUserHistory] = useState<any[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  
+  // Eklenen: Rapor verisini modal'a taşımak için
+  const [imageReportData, setImageReportData] = useState<any>(null);
 
   // --- API İŞLEMLERİ ---
-
   const fetchData = async () => {
     try {
       const [userRes, repRes, banRes, statRes, matchRes] = await Promise.all([
@@ -43,7 +45,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // Eşleşmeyi Zorla Bitir (Kill Match)
+  // Eşleşmeyi Zorla Bitir
   const killMatch = async (matchId: string, user1Id: string, user2Id: string) => {
     if(!confirm("Bu eşleşmeyi sonlandırmak istediğine emin misin?")) return;
     try {
@@ -52,14 +54,33 @@ export default function AdminDashboard() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ matchId, user1Id, user2Id })
         });
-        // UI'ı hemen güncelle
         fetchData();
     } catch (err) {
         console.error("Eşleşme sonlandırılamadı:", err);
     }
   };
 
-  // Seçilen Kullanıcının Geçmişini Çekme
+  // YENİ EKLENEN: Sebepli Ban Fonksiyonu
+  const banByIP = async (ip: string, id?: string) => {
+    // Admin'e ban sebebini sor (İptal ederse işlem durur)
+    const reason = prompt(`${ip} adresi 24 saat yasaklanacak.\nLütfen bir sebep girin:`, "Kurallara aykırı davranış");
+    
+    if (reason === null) return; // Kullanıcı iptale bastıysa dur
+
+    try {
+        await fetch(`${BACKEND_URL}/api/ban-user`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reportedId: id, ip: ip, reason: reason }) 
+        });
+        alert("Kullanıcı 24 saat yasaklandı ve sistemden atıldı.");
+        setSelectedImage(null);
+        fetchData();
+    } catch (err) {
+        console.error("Ban hatası:", err);
+    }
+  };
+
   useEffect(() => {
     if (selectedUser) {
       fetch(`${BACKEND_URL}/api/admin/user-logs/${selectedUser.id}`)
@@ -69,11 +90,10 @@ export default function AdminDashboard() {
     }
   }, [selectedUser]);
 
-  // Periyodik Veri Güncelleme
   useEffect(() => {
     if (isLoggedIn) {
       fetchData();
-      const interval = setInterval(fetchData, 3000); // 3 saniyede bir güncelle (daha canlı hissetmesi için)
+      const interval = setInterval(fetchData, 3000); 
       return () => clearInterval(interval);
     }
   }, [isLoggedIn]);
@@ -110,7 +130,7 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 max-w-[1600px] mx-auto">
         {[
           { label: "Online Kullanıcı", value: stats.activeUsers, color: "text-green-400" },
-          { label: "Canlı Eşleşme", value: activeMatches.length, color: "text-blue-400" }, // stats yerine doğrudan activeMatches uzunluğu
+          { label: "Canlı Eşleşme", value: activeMatches.length, color: "text-blue-400" }, 
           { label: "Bekleyen Rapor", value: stats.pendingReports, color: "text-red-500" },
           { label: "Toplam Ban", value: stats.totalBans, color: "text-zinc-500" },
         ].map((s, i) => (
@@ -160,7 +180,6 @@ export default function AdminDashboard() {
           {/* Bölüm 1: Kullanıcı Detay Kartı */}
           {selectedUser ? (
             <div className="bg-zinc-900 border border-zinc-800 rounded-[45px] p-8 shadow-2xl relative overflow-hidden">
-               {/* Background Glow */}
                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/5 rounded-full blur-3xl -z-0"></div>
                
               <div className="relative z-10">
@@ -213,16 +232,9 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+                {/* DÜZELTİLDİ: Banlama Butonu */}
                 <button 
-                  onClick={() => {
-                    if(confirm("Kullanıcı yasaklanacak? Bu işlem geri alınamaz.")) {
-                      fetch(`${BACKEND_URL}/api/ban-user`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ reportedId: selectedUser.id, ip: selectedUser.ip })
-                      }).then(() => { setSelectedUser(null); fetchData(); });
-                    }
-                  }}
+                  onClick={() => banByIP(selectedUser.ip, selectedUser.id)}
                   className="w-full bg-red-600/10 hover:bg-red-600 hover:text-white border border-red-600/50 text-red-500 py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all"
                 >
                   Kullanıcıyı Yasakla (BAN)
@@ -257,7 +269,6 @@ export default function AdminDashboard() {
                   activeMatches.map((match) => (
                     <div key={match.id} className="group bg-zinc-900/40 border border-zinc-800/60 p-5 rounded-[30px] flex items-center justify-between hover:bg-zinc-900/80 transition-all">
                       
-                      {/* Kullanıcı 1 */}
                       <div className="flex items-center gap-4 w-[40%]">
                         <div className="w-10 h-10 rounded-2xl bg-zinc-800 flex items-center justify-center font-bold text-zinc-500 border border-zinc-700">
                           {match.user1.country || "🌍"}
@@ -268,7 +279,6 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {/* Bağlantı Durumu & Zaman */}
                       <div className="flex flex-col items-center justify-center w-[20%]">
                         <div className="flex gap-1 mb-1">
                           <span className="w-1 h-1 bg-green-500 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
@@ -280,7 +290,6 @@ export default function AdminDashboard() {
                         </p>
                       </div>
 
-                      {/* Kullanıcı 2 & Müdahale */}
                       <div className="flex items-center justify-end gap-4 w-[40%] text-right">
                         <div className="overflow-hidden">
                           <p className="text-[10px] font-black text-zinc-300 truncate">{match.user2.id.slice(-8)}</p>
@@ -290,7 +299,6 @@ export default function AdminDashboard() {
                           {match.user2.country || "🌍"}
                         </div>
                         
-                        {/* Kill Button */}
                         <button 
                           onClick={() => killMatch(match.id, match.user1.id, match.user2.id)}
                           className="ml-2 bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white p-2 rounded-xl border border-red-600/20 transition-all active:scale-90"
@@ -307,87 +315,23 @@ export default function AdminDashboard() {
                 )}
               </div>
             </div>
-
-          {/* Bölüm 2: CANLI MAÇ AKIŞI (Live Feed) */}
-          <div className="pt-4 border-t border-zinc-800/50">
-             <div className="flex items-center justify-between mb-4 px-2">
-                <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest flex items-center gap-2">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                    </span>
-                    Canlı Görüşmeler ({activeMatches.length})
-                </h3>
-             </div>
-             
-             <div className="grid grid-cols-1 gap-3">
-                {activeMatches.length === 0 && <div className="text-center py-10 text-zinc-800 text-xs font-bold uppercase">Şu an aktif görüşme yok</div>}
-                {activeMatches.map((match) => (
-                    <div key={match.id} className="group bg-zinc-900 border border-zinc-800 hover:border-zinc-700 p-4 rounded-[25px] flex items-center justify-between transition-all">
-                        {/* Sol Taraf: User 1 */}
-                        <div className="flex items-center gap-3 w-1/3">
-                            <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-500">
-                                {match.user1.country || "U1"}
-                            </div>
-                            <div className="overflow-hidden">
-                                <p className="text-[9px] font-bold text-zinc-400 truncate">{match.user1.id.slice(0,6)}</p>
-                                <p className="text-[8px] text-zinc-600">{match.user1.ip?.slice(0,10)}...</p>
-                            </div>
-                        </div>
-
-                        {/* Orta: Bağlantı Animasyonu */}
-                        <div className="flex flex-col items-center justify-center w-1/3">
-                            <div className="flex items-center gap-1">
-                                <span className="w-1 h-1 bg-green-500 rounded-full animate-bounce delay-75"></span>
-                                <span className="w-1 h-1 bg-green-500 rounded-full animate-bounce delay-100"></span>
-                                <span className="w-1 h-1 bg-green-500 rounded-full animate-bounce delay-150"></span>
-                            </div>
-                            <p className="text-[8px] font-mono text-zinc-600 mt-1">
-                                {Math.floor((new Date().getTime() - new Date(match.startTime).getTime()) / 1000)}s
-                            </p>
-                        </div>
-
-                        {/* Sağ Taraf: User 2 ve Aksiyon */}
-                        <div className="flex items-center justify-end gap-3 w-1/3">
-                            <div className="text-right overflow-hidden">
-                                <p className="text-[9px] font-bold text-zinc-400 truncate">{match.user2.id.slice(0,6)}</p>
-                                <p className="text-[8px] text-zinc-600">{match.user2.ip?.slice(0,10)}...</p>
-                            </div>
-                            <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-500">
-                                {match.user2.country || "U2"}
-                            </div>
-                            
-                            {/* KILL BUTTON */}
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); killMatch(match.id, match.user1.id, match.user2.id); }}
-                                className="ml-2 w-8 h-8 rounded-full bg-red-900/20 text-red-600 border border-red-900/30 hover:bg-red-600 hover:text-white flex items-center justify-center transition-all active:scale-90"
-                                title="Görüşmeyi Sonlandır"
-                            >
-                                ✕
-                            </button>
-                        </div>
-                    </div>
-                ))}
-             </div>
-          </div>
-
         </div>
 
         {/* SAĞ KOLON: RAPORLAR VE BANLAR */}
         <div className="lg:col-span-3 space-y-8 h-fit sticky top-6">
            
-           {/* Raporlar Listesi */}
+           {/* DÜZELTİLDİ: Raporlar Listesi */}
            <div className="space-y-4">
               <h3 className="text-[10px] font-black text-zinc-600 uppercase tracking-widest px-2">Son Şikayetler</h3>
               <div className="space-y-3">
                 {reports.length === 0 && <p className="text-[9px] text-zinc-700 px-2">Temiz.</p>}
                 {reports.slice(0, 5).map((r, i) => (
-                  <div key={i} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex items-start gap-3 relative group">
+                  <div key={i} className="bg-zinc-900/50 border border-zinc-800 p-3 rounded-2xl flex items-start gap-3 relative group transition-all hover:bg-zinc-900">
                     {r.screenshot && (
                       <div className="relative">
                         <img 
                             src={r.screenshot} 
-                            onClick={() => setSelectedImage(r.screenshot)} 
+                            onClick={() => { setSelectedImage(r.screenshot); setImageReportData(r); }} 
                             className="w-16 h-12 object-cover rounded-lg cursor-zoom-in border border-zinc-800 hover:border-red-500 transition-colors" 
                         />
                         <div className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-black"></div>
@@ -396,10 +340,18 @@ export default function AdminDashboard() {
                     <div className="overflow-hidden flex-1">
                       <p className="font-mono text-[9px] font-bold text-red-400 truncate mb-1">Hedef: {r.reportedId?.slice(0,6)}</p>
                       <p className="text-[8px] text-zinc-500 mb-2">Raporlayan: {r.reporterId?.slice(0,6)}</p>
-                      <div className="flex gap-2">
+                      
+                      {/* YENİ: Yasakla ve Yoksay Butonları */}
+                      <div className="flex gap-2 mt-2">
+                        <button 
+                          onClick={() => banByIP(r.reportedIP, r.reportedId)} 
+                          className="text-[8px] bg-red-600/20 text-red-500 hover:bg-red-600 hover:text-white px-2 py-1 rounded-md font-black uppercase transition-colors"
+                        >
+                          Yasakla
+                        </button>
                         <button 
                             onClick={() => fetch(`${BACKEND_URL}/api/reports/${r._id}`, {method:'DELETE'}).then(fetchData)}
-                            className="text-[8px] bg-zinc-800 px-2 py-1 rounded hover:bg-zinc-700 text-white transition-colors"
+                            className="text-[8px] bg-zinc-800 px-2 py-1 rounded hover:bg-zinc-700 text-white transition-colors uppercase font-black"
                         >
                             Yoksay
                         </button>
@@ -431,12 +383,23 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Screenshot Görüntüleme Modalı */}
+      {/* DÜZELTİLDİ: Screenshot Görüntüleme Modalı */}
       {selectedImage && (
         <div className="fixed inset-0 z-[500] bg-black/95 backdrop-blur-md flex items-center justify-center p-10 cursor-zoom-out" onClick={() => setSelectedImage(null)}>
-          <div className="relative">
+          <div className="relative flex flex-col items-center gap-6" onClick={(e) => e.stopPropagation()}>
              <img src={selectedImage} className="max-w-[90vw] max-h-[90vh] rounded-3xl border border-zinc-800 shadow-2xl animate-in zoom-in-95 duration-200" />
-             <p className="text-center text-white/50 text-xs mt-4 uppercase tracking-widest font-bold">Kapatmak için boşluğa tıkla</p>
+             
+             <div className="flex gap-4 cursor-default">
+                {imageReportData && (
+                  <button 
+                    onClick={() => banByIP(imageReportData.reportedIP, imageReportData.reportedId)}
+                    className="bg-red-600 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-red-600/20 active:scale-95 transition-all"
+                  >
+                    KANITLI BANLA
+                  </button>
+                )}
+                <button onClick={() => setSelectedImage(null)} className="bg-zinc-800 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs hover:bg-zinc-700 transition-colors">Kapat</button>
+             </div>
           </div>
         </div>
       )}
