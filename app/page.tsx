@@ -17,9 +17,12 @@ if (typeof window !== "undefined" && typeof (window as any).global === "undefine
 }
 
 // Socket bağlantısını component dışında tanımlıyoruz (Singleton)
-const socket = io("https://videochat-1qxi.onrender.com/", { 
-  transports: ["websocket"], 
-  secure: true,
+const socket = io("https://videochat-1qxi.onrender.com", {
+  transports: ["polling", "websocket"], // Önce polling ile el sıkış, sonra websocket'e geç
+  withCredentials: true,
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 2000,
   query: typeof window !== "undefined" ? { dbUserId: localStorage.getItem("dbUserId") } : {}
 });
 
@@ -57,7 +60,10 @@ export default function Home() {
   const [showLoginRequired, setShowLoginRequired] = useState(false); 
   const [sessionLikes, setSessionLikes] = useState(0); 
   const [partnerSessionLikes, setPartnerSessionLikes] = useState(0);
-  
+  // Diğer state'lerin arasına ekle
+  const [banDetails, setBanDetails] = useState<{ reason: string; expireAt: string } | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState<string>("");
+    
   const [cameraOn, setCameraOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
@@ -149,6 +155,16 @@ export default function Home() {
   useEffect(() => {
     if (!socket) return;
 
+        // 1. Anlık Banlanma Durumu (Admin panelden butona basılınca)
+        socket.on('account_banned', (data) => {
+            setBanDetails(data);
+        });
+
+        // 2. Sayfa Yenilendiğinde Sunucudan Gelen "Giremezsin" Cevabı
+        socket.on('connection_refused', (data) => {
+            setBanDetails(data);
+        });
+
     socket.on('partner_left_auto_next', () => {
         console.log("Partner ayrıldı, otomatik olarak bir sonrakine geçiliyor...");
         if (peerRef.current) {
@@ -207,6 +223,32 @@ export default function Home() {
         socket.off("receive_like");
     };
   }, [allCountries]); // isActive buraya EKLENMEMELİ
+
+
+  // Ban Süresi Geri Sayım Sayacı
+  useEffect(() => {
+    if (!banDetails) return;
+
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const end = new Date(banDetails.expireAt).getTime();
+      const distance = end - now;
+
+      if (distance < 0) {
+        clearInterval(interval);
+        window.location.reload(); // Süre bitti, sayfayı yenile ve içeri al
+        return;
+      }
+
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+      setTimeRemaining(`${hours}sa ${minutes}dk ${seconds}sn`);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [banDetails]);
 
   const startMedia = async (mode: "user" | "environment" = facingMode) => {
     try {
@@ -350,7 +392,7 @@ export default function Home() {
     socket.emit("find_partner", { myGender, searchGender, selectedCountry });
   };
 
-  
+
   const handleLike = () => {
     triggerHeartAnimation();
     const updatedLikes = sessionLikes + 1; 
@@ -424,6 +466,51 @@ export default function Home() {
       setMicOn(!micOn); 
     } 
   };
+
+
+        // --- BAN EKRANI (Araya Giren Katman) ---
+        if (banDetails) {
+          return (
+            <div className="fixed inset-0 z-[9999] bg-black flex items-center justify-center p-6 text-center select-none">
+              <div className="bg-[#121214] border-2 border-red-600/50 p-8 rounded-[40px] max-w-md w-full shadow-[0_0_100px_rgba(220,38,38,0.3)] animate-in zoom-in-95 duration-300 relative overflow-hidden">
+                
+                {/* Arka plan efekti */}
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 via-orange-600 to-red-600 animate-pulse"></div>
+                
+                <div className="mb-6 flex justify-center">
+                  <div className="w-24 h-24 bg-red-600/20 rounded-full flex items-center justify-center animate-bounce">
+                    <ShieldAlert size={48} className="text-red-500" />
+                  </div>
+                </div>
+
+                <h1 className="text-3xl font-black text-white italic uppercase tracking-tighter mb-2">ERİŞİM ENGELLENDİ</h1>
+                <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-8">Topluluk kurallarını ihlal ettiniz</p>
+
+                <div className="bg-red-900/10 border border-red-500/20 p-4 rounded-2xl mb-6">
+                  <p className="text-[10px] text-red-400 font-black uppercase mb-1">Sebep</p>
+                  <p className="text-sm text-white font-medium">{banDetails.reason}</p>
+                </div>
+
+                <div className="mb-8">
+                  <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest mb-2">Yasağın Kalkmasına Kalan Süre</p>
+                  <div className="text-4xl font-black text-white font-mono tracking-widest tabular-nums bg-black/40 py-4 rounded-2xl border border-white/5">
+                    {timeRemaining || "Hesaplanıyor..."}
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="w-full bg-white text-black py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-zinc-200 transition-colors active:scale-95"
+                >
+                  Tekrar Kontrol Et
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        // --- BURADAN SONRA SENİN NORMAL RETURN KODUN GELİYOR ---
+        // if (!isMounted) return null; ...
 
   if (!isMounted) return null;
 

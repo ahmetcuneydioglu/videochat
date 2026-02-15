@@ -26,6 +26,7 @@ mongoose.connect(MONGODB_URI)
   .then(() => console.log('✅ MongoDB Bağlantısı Başarılı'))
   .catch(err => console.error('❌ MongoDB Bağlantı Hatası:', err));
 
+// --- MODELLER ---
 const UserSchema = new mongoose.Schema({
   googleId: { type: String, unique: true, sparse: true },
   email: { type: String, unique: true, sparse: true },
@@ -37,7 +38,16 @@ const UserSchema = new mongoose.Schema({
 });
 
 const User = mongoose.model('User', UserSchema);
-const Ban = mongoose.model('Ban', new mongoose.Schema({ ip: String, reason: String, date: { type: Date, default: Date.now } }));
+
+// DÜZELTME: Ban şemasına expireAt eklendi
+const BanSchema = new mongoose.Schema({ 
+  ip: String, 
+  reason: String, 
+  date: { type: Date, default: Date.now },
+  expireAt: { type: Date } // Ban bitiş süresi
+});
+const Ban = mongoose.model('Ban', BanSchema);
+
 const Report = mongoose.model('Report', new mongoose.Schema({ reporterId: String, reportedId: String, reportedIP: String, screenshot: String, date: { type: Date, default: Date.now } }));
 const Log = mongoose.model('Log', new mongoose.Schema({ userId: String, userIP: String, action: String, targetId: String, duration: Number, date: { type: Date, default: Date.now } }));
 
@@ -65,7 +75,14 @@ app.post('/api/auth/social-login', async (req, res) => {
   }
 });
 
-const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"], credentials: true } });
+const io = new Server(server, {
+  cors: {
+    origin: "*", 
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ["polling", "websocket"]
+});
 
 const getMatchId = (id1, id2) => [id1, id2].sort().join('_');
 
@@ -74,6 +91,22 @@ io.on('connection', async (socket) => {
   if (userIP.includes(',')) userIP = userIP.split(',')[0].trim();
   if (userIP === '::1' || userIP === '127.0.0.1') userIP = '176.234.224.0';
   
+  // DÜZELTME: Bağlantı anında süreli ban kontrolü
+  const activeBan = await Ban.findOne({ 
+    ip: userIP, 
+    expireAt: { $gt: new Date() } // Süresi henüz dolmamış banları bul
+  });
+
+  if (activeBan) {
+      console.log(`🚫 Yasaklı Kullanıcı Engellendi: ${userIP} (Bitiş: ${activeBan.expireAt})`);
+      // Frontend'e neden engellendiğini ve süreyi gönder
+      socket.emit('connection_refused', { 
+        reason: activeBan.reason, 
+        expireAt: activeBan.expireAt 
+      });
+      return socket.disconnect();
+  }
+
   const geo = geoip.lookup(userIP);
   const countryCode = geo ? geo.country : 'UN';
 
@@ -89,17 +122,9 @@ io.on('connection', async (socket) => {
 
   userDetails.set(socket.id, { id: socket.id, dbId: dbUserId || null, ip: userIP, country: countryCode, status: 'IDLE', likes: currentLikes, isRegistered, myGender: 'male' });
 
-  const isBanned = await Ban.findOne({ ip: userIP });
-  if (isBanned) {
-      console.log(`🚫 Banlı Kullanıcı Reddedildi: ${userIP}`);
-      return socket.disconnect();
-  }
-
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
     console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender}, Aradığı: ${searchGender}, Bölge: ${selectedCountry})`);
     
-    // --- GÜVENLİK KALKANI ---
-    // Eğer find_partner tetiklendiğinde kişi hala başka bir maçta görünüyorsa, önce onu kopar!
     const existingPartner = activeMatches.get(socket.id);
     if (existingPartner) {
         console.log(`⚠️ GÜVENLİK: [${socket.id.slice(0,6)}] yeni arama yaptı ama eski eşleşmesi askıda kalmış. Temizleniyor...`);
@@ -185,8 +210,6 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('signal', (data) => {
-    // WebRTC Sinyalleri - Aşırı log kirliliği yapmamak için yoruma alıyoruz ama hata ayıklama için burası
-    // console.log(`📡 Sinyal: [${socket.id.slice(0,6)}] -> [${data.to.slice(0,6)}]`);
     io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
   });
 
@@ -203,7 +226,6 @@ io.on('connection', async (socket) => {
     activeMatches.delete(socket.id);
   });
   
-  // Rapor ve Beğeni fonksiyonları (değişmedi, yer tasarrufu için özetliyorum, dosyanda çalışacak)
   socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLikes }) => {
     const me = userDetails.get(socket.id); const partner = userDetails.get(targetId);
     if (me && partner && increaseCounter && me.isRegistered && partner.dbId) {
@@ -227,18 +249,49 @@ io.on('connection', async (socket) => {
 app.get('/api/admin/active-users', (req, res) => res.json(Array.from(userDetails.values())));
 app.get('/api/reports', async (req, res) => res.json(await Report.find().sort({ date: -1 }).limit(50)));
 app.delete('/api/reports/:id', async (req, res) => { await Report.findByIdAndDelete(req.params.id); res.json({ success: true }); });
-app.get('/api/bans', async (req, res) => res.json(await Ban.find()));
+
+// Sadece aktif (süresi dolmamış) banları getir
+app.get('/api/bans', async (req, res) => {
+  const activeBans = await Ban.find({ expireAt: { $gt: new Date() } });
+  res.json(activeBans);
+});
+
 app.delete('/api/bans/:ip', async (req, res) => { await Ban.findOneAndDelete({ ip: req.params.ip }); res.json({ success: true }); });
-app.get('/api/admin/stats', async (req, res) => res.json({ activeUsers: userDetails.size, totalBans: await Ban.countDocuments(), pendingReports: await Report.countDocuments(), totalMatchesToday: 0 }));
+app.get('/api/admin/stats', async (req, res) => {
+  // Stats kısmında da sadece aktif banları sayalım
+  const totalActiveBans = await Ban.countDocuments({ expireAt: { $gt: new Date() } });
+  res.json({ activeUsers: userDetails.size, totalBans: totalActiveBans, pendingReports: await Report.countDocuments(), totalMatchesToday: 0 });
+});
 app.get('/api/admin/active-matches', (req, res) => res.json(global.liveMatches ? Array.from(global.liveMatches.values()) : []));
 
+// DÜZELTME: Banlama işlemi 24 saatlik süre ile yapılır
 app.post('/api/ban-user', async (req, res) => {
   const { ip, reportedId, reason } = req.body;
-  await new Ban({ ip, reason: reason || "Admin Ban" }).save();
+  
+  // 24 saat sonrasını hesapla
+  const expireDate = new Date();
+  expireDate.setHours(expireDate.getHours() + 24);
+
+  await new Ban({ 
+    ip, 
+    reason: reason || "Kurallara Aykırı Davranış", 
+    expireAt: expireDate 
+  }).save();
+
   if (reportedId) {
-    io.to(reportedId).emit('account_banned', { reason });
+    // Kişiye 24 saat banlandığını bildir
+    io.to(reportedId).emit('account_banned', { 
+      reason: reason || "Topluluk kurallarını ihlal ettiniz.",
+      expireAt: expireDate
+    });
+    
+    // Mesajın ulaşması için kısa bir süre bekleyip bağlantıyı kopar
     const s = io.sockets.sockets.get(reportedId);
-    if (s) s.disconnect(); 
+    if (s) {
+      setTimeout(() => {
+        s.disconnect();
+      }, 1500);
+    } 
   }
   res.json({ success: true });
 });
