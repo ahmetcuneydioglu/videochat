@@ -60,6 +60,7 @@ export default function Home() {
   const [showLoginRequired, setShowLoginRequired] = useState(false); 
   const [sessionLikes, setSessionLikes] = useState(0); 
   const [partnerSessionLikes, setPartnerSessionLikes] = useState(0);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   // Diğer state'lerin arasına ekle
   const [banDetails, setBanDetails] = useState<{ reason: string; expireAt: string } | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string>("");
@@ -687,9 +688,12 @@ export default function Home() {
               )}
 
               {userAvatar && !showModal && (
-                <div className={`absolute top-[60px] ml-3 ${partnerSessionLikes > 0 ? 'mt-12' : 'mt-2'} transition-all duration-300 flex items-center gap-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit animate-in fade-in slide-in-from-left-4 z-[60]`}>
+                <div 
+                  onClick={() => setShowProfileModal(true)}
+                  className={`absolute top-[60px] ml-3 ${partnerSessionLikes > 0 ? 'mt-12' : 'mt-2'} cursor-pointer transition-all duration-300 flex items-center gap-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit hover:bg-white/5 active:scale-95 animate-in fade-in slide-in-from-left-4 z-[60]`}
+                >
                   <img src={userAvatar} alt="You" className="w-8 h-8 rounded-full border-2 border-blue-500/40 object-cover" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${userName}&background=0D8ABC&color=fff`)} />
-                  <span className="text-[9px] font-black pr-3 text-white uppercase tracking-widest">YOU</span>
+                  <span className="text-[9px] font-black pr-3 text-white uppercase tracking-widest">PROFIL</span>
                 </div>
               )}
 
@@ -901,6 +905,63 @@ export default function Home() {
           .animate-swipe-left { animation: swipe-left 1.5s infinite ease-in-out; }
         `}</style>
       </div>
+
+      {/* KULLANICI PROFİL MODALI */}
+        {showProfileModal && (
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-2xl animate-in fade-in duration-300">
+            <div className="bg-[#121214] border border-white/10 w-full max-w-sm rounded-[40px] p-8 shadow-2xl relative overflow-hidden text-center">
+              <button onClick={() => setShowProfileModal(false)} className="absolute top-6 right-6 text-zinc-500 hover:text-white transition-colors">
+                <X size={24}/>
+              </button>
+
+              <div className="relative w-24 h-24 mx-auto mb-4">
+                <img 
+                  src={userAvatar || ""} 
+                  className="w-full h-full rounded-full border-4 border-blue-600/20 object-cover shadow-2xl" 
+                  alt="Profile"
+                  onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${userName}&background=0D8ABC&color=fff`)}
+                />
+                <div className="absolute bottom-0 right-0 bg-green-500 w-6 h-6 rounded-full border-4 border-[#121214]"></div>
+              </div>
+              <h3 className="text-2xl font-black uppercase italic tracking-tighter text-white mb-1">{userName}</h3>
+              <span className="text-[10px] text-blue-500 font-bold uppercase tracking-[0.3em] block mb-8">OMEGPT Network</span>
+
+              <div className="grid grid-cols-2 gap-4 mb-8">
+                <div className="bg-white/5 p-4 rounded-3xl border border-white/5">
+                  <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1">Beğeniler</p>
+                  <p className="text-xl font-black text-pink-500 flex items-center justify-center gap-2">
+                    <Heart size={16} fill="currentColor"/> {partnerLikes || 0}
+                  </p>
+                </div>
+                <div className="bg-white/5 p-4 rounded-3xl border border-white/5">
+                  <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1">Güven Skoru</p>
+                  <p className="text-xl font-black text-blue-400">100/100</p>
+                </div>
+              </div>
+
+              <div className="space-y-2 mb-8">
+                <div 
+                  onClick={() => {
+                    localStorage.clear();
+                    window.location.reload();
+                  }}
+                  className="flex items-center justify-between p-4 bg-red-600/10 rounded-2xl hover:bg-red-600/20 transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-center gap-4 text-red-500">
+                    <LogIn size={18} className="rotate-180"/>
+                    <span className="text-xs font-bold uppercase tracking-widest">Çıkış Yap</span>
+                  </div>
+                  <SkipForward size={14} className="text-red-500/50"/>
+                </div>
+              </div>
+
+              <p className="text-[9px] text-zinc-700 uppercase font-bold tracking-widest leading-relaxed">
+                Platform kurallarına uyduğunuz için <br/> teşekkür ederiz.
+              </p>
+            </div>
+          </div>
+        )}
+        
     </GoogleOAuthProvider>
   );
 }
