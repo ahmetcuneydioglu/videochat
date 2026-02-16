@@ -704,7 +704,7 @@ export default function Home() {
               {userAvatar && !showModal && (
                 <div 
                   onClick={() => setShowProfileModal(true)}
-                  className={`absolute top-[60px] ml-3 ${partnerSessionLikes > 0 ? 'mt-12' : 'mt-2'} cursor-pointer transition-all duration-300 flex items-center gap-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit hover:bg-white/5 active:scale-95 animate-in fade-in slide-in-from-left-4 z-[60]`}
+                  className={`absolute top-[45px] ml-0.5 ${partnerSessionLikes > 0 ? 'mt-10' : 'mt-2'} cursor-pointer transition-all duration-300 flex items-center gap-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1 rounded-full w-fit hover:bg-white/5 active:scale-95 animate-in fade-in slide-in-from-left-4 z-[60]`}
                 >
                   <img src={userAvatar} alt="You" className="w-8 h-8 rounded-full border-2 border-blue-500/40 object-cover" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${userName}&background=0D8ABC&color=fff`)} />
                   {/* <span className="text-[9px] font-black pr-3 text-white uppercase tracking-widest">PROFIL</span> */}
