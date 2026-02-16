@@ -61,6 +61,7 @@ export default function Home() {
   const [sessionLikes, setSessionLikes] = useState(0); 
   const [partnerSessionLikes, setPartnerSessionLikes] = useState(0);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [myTotalLikes, setMyTotalLikes] = useState(0);
   // Diğer state'lerin arasına ekle
   const [banDetails, setBanDetails] = useState<{ reason: string; expireAt: string } | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string>("");
@@ -197,11 +198,24 @@ export default function Home() {
         setTimeout(() => setMatchNotification(null), 4000);
     });
 
+    socket.on('update_my_likes', (data) => {
+      setMyTotalLikes(data.likes);
+      });
+
     socket.on("receive_like", (data) => {
-      if (data.newLikes !== undefined) setPartnerLikes(data.newLikes);
+      // 1. Eğer veri 'partner'dan geliyorsa (yani BEN beğenildiysem)
+      if (data.isForMe) { 
+        setMyTotalLikes(data.newLikes);
+      } else {
+        // 2. Eğer ben karşı tarafı beğendiysem ve onun sayısı güncellendiyse
+        setPartnerLikes(data.newLikes);
+      }
+
+      // Ortak bildirim ve animasyonlar
       if (data.senderSessionLikes) {
         setPartnerSessionLikes(data.senderSessionLikes);
       }
+      
       setMatchNotification("Someone loved your vibe! ❤️");
       triggerHeartAnimation(); 
       setTimeout(() => setMatchNotification(null), 3000);
@@ -930,7 +944,7 @@ export default function Home() {
                 <div className="bg-white/5 p-4 rounded-3xl border border-white/5">
                   <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1">Beğeniler</p>
                   <p className="text-xl font-black text-pink-500 flex items-center justify-center gap-2">
-                    <Heart size={16} fill="currentColor"/> {partnerLikes || 0}
+                    <Heart size={16} fill="currentColor"/> {myTotalLikes || 0}
                   </p>
                 </div>
                 <div className="bg-white/5 p-4 rounded-3xl border border-white/5">
@@ -961,7 +975,7 @@ export default function Home() {
             </div>
           </div>
         )}
-        
+
     </GoogleOAuthProvider>
   );
 }

@@ -131,7 +131,8 @@ io.on('connection', async (socket) => {
 
   if (dbUserId && mongoose.Types.ObjectId.isValid(dbUserId)) {
     const dbUser = await User.findById(dbUserId);
-    if (dbUser) { currentLikes = dbUser.likes; isRegistered = true; }
+    if (dbUser) { currentLikes = dbUser.likes; isRegistered = true;
+  socket.emit('update_my_likes', { likes: dbUser.likes });}
   }
 
   userDetails.set(socket.id, { id: socket.id, dbId: dbUserId || null, ip: userIP, country: countryCode, status: 'IDLE', likes: currentLikes, isRegistered, myGender: 'male' });
@@ -246,7 +247,12 @@ io.on('connection', async (socket) => {
         await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
         partner.likes += 1;
     }
-    io.to(targetId).emit('receive_like', { newLikes: partner?.likes, senderSessionLikes: currentSessionLikes });
+    io.to(targetId).emit('receive_like', { 
+        newLikes: partner.likes, 
+        senderSessionLikes: currentSessionLikes,
+        isForMe: true // <--- Bu bayrak sayesinde Frontend kimin beğeni aldığını anlar
+    });
+    
   });
 
   socket.on('report_user', async ({ reportedId, screenshot }) => {
