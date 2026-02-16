@@ -44,6 +44,10 @@ const UserSchema = new mongoose.Schema({
   avatar: String,
   likes: { type: Number, default: 0 },
   isRegistered: { type: Boolean, default: false },
+  role: { type: String, default: 'user' }, // 'user', 'vip', 'admin'
+  trustScore: { type: Number, default: 100 }, // Güven Skoru (0-100)
+  status: { type: String, default: 'active' }, // 'active', 'shadow_banned'
+  lastSeen: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -312,6 +316,30 @@ app.post('/api/admin/kill-match', (req, res) => {
     if (global.liveMatches) global.liveMatches.delete(matchId);
     res.json({ success: true });
 });
+
+// Tüm Kayıtlı Kullanıcıları Listele (Admin)
+app.get('/api/admin/all-users', async (req, res) => {
+  try {
+    const users = await User.find().sort({ createdAt: -1 });
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: "Kullanıcılar getirilemedi" });
+  }
+});
+
+// Kullanıcı Güncelleme (Role, Status, TrustScore vb.)
+app.post('/api/admin/update-user', async (req, res) => {
+  const { userId, updateData } = req.body;
+  try {
+    await User.findByIdAndUpdate(userId, updateData);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Güncelleme hatası" });
+  }
+});
+
+// Güven Skoru Otomasyonu (Örnek: Like alınca artar)
+// Bu mantığı mevcut socket.on('like_partner') içine de entegre edebilirsin
 
 const PORT = process.env.PORT || 5001;
 server.listen(PORT, "0.0.0.0", () => console.log(`🚀 Sunucu ${PORT} portunda yayında.`));
