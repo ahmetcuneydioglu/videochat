@@ -420,7 +420,8 @@ export default function AdminDashboard() {
                   u.name?.toLowerCase().includes(userSearch.toLowerCase()) || 
                   u.email?.toLowerCase().includes(userSearch.toLowerCase())
                 ).map(user => (
-                  <tr key={user._id} className="bg-black/20 hover:bg-black/40 transition-colors group">
+                  // admin/page.tsx içindeki <tr> etiketini güncelle
+                  <tr key={user._id} className={`transition-colors group ${user.trustScore < 40 ? 'bg-red-900/10' : 'bg-black/20 hover:bg-black/40'}`}>
                     <td className="px-6 py-4 rounded-l-3xl border-y border-l border-zinc-800/50">
                       <div className="flex items-center gap-4">
                         <img 

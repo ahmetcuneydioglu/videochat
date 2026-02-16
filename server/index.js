@@ -196,19 +196,33 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('next_user', () => {
-    const partnerId = activeMatches.get(socket.id);
-    if (partnerId) {
-      console.log(`⏭️ [${socket.id.slice(0,6)}] NEXT dedi. Eski partner [${partnerId.slice(0,6)}] ile bağ koparılıyor.`);
-      io.to(partnerId).emit('partner_left_auto_next');
-      activeMatches.delete(socket.id);
-      activeMatches.delete(partnerId);
-      
-      const p = userDetails.get(partnerId);
-      if (p) p.status = 'SEARCHING';
+  const partnerId = activeMatches.get(socket.id);
+  
+  // Süreyi hesaplamak için match verisini çekiyoruz
+  const matchId = getMatchId(socket.id, partnerId);
+  const match = global.liveMatches.get(matchId);
 
-      if (global.liveMatches) global.liveMatches.delete(getMatchId(socket.id, partnerId));
+  if (match && partnerId) {
+    const duration = (new Date() - match.startTime) / 1000;
+    const myDetails = userDetails.get(socket.id);
+    const pDetails = userDetails.get(partnerId);
+
+    // 2 dakikadan fazlaysa her iki kayıtlı kullanıcıya puan ver
+    if (duration > 120) {
+      if (myDetails?.dbId) updateTrustScore(myDetails.dbId, 5);
+      if (pDetails?.dbId) updateTrustScore(pDetails.dbId, 5);
     }
-  });
+
+    console.log(`⏭️ [${socket.id.slice(0,6)}] NEXT dedi.`);
+    io.to(partnerId).emit('partner_left_auto_next');
+    activeMatches.delete(socket.id);
+    activeMatches.delete(partnerId);
+    global.liveMatches.delete(matchId);
+    
+    const p = userDetails.get(partnerId);
+    if (p) p.status = 'SEARCHING';
+  }
+});
 
   socket.on('stop_search', () => {
     console.log(`⏹️ [${socket.id.slice(0,6)}] Aramayı tamamen durdurdu.`);
@@ -252,17 +266,25 @@ io.on('connection', async (socket) => {
         senderSessionLikes: currentSessionLikes,
         isForMe: true // <--- Bu bayrak sayesinde Frontend kimin beğeni aldığını anlar
     });
+
+    updateTrustScore(partner.dbId, 2);
     
   });
 
   socket.on('report_user', async ({ reportedId, screenshot }) => {
     const reported = userDetails.get(reportedId);
+    const reportedUser = userDetails.get(reportedId);
     if (reported) {
         await new Report({ reporterId: socket.id, reportedId, reportedIP: reported.ip, screenshot, date: new Date() }).save();
         reported.reports = (reported.reports || 0) + 1;
         console.log(`⚠️ KULLANICI RAPORLANDI: [${reportedId}]`);
     }
+
+    if (reportedUser && reportedUser.dbId) {
+      updateTrustScore(reportedUser.dbId, -15);
+      }
   });
+
 });
 
 // --- ADMIN API ---
@@ -324,9 +346,10 @@ app.post('/api/admin/kill-match', (req, res) => {
 });
 
 // Tüm Kayıtlı Kullanıcıları Listele (Admin)
+// Düşük trustScore en üstte olacak şekilde sırala (1: artan, -1: azalan)
 app.get('/api/admin/all-users', async (req, res) => {
   try {
-    const users = await User.find().sort({ createdAt: -1 });
+    const users = await User.find().sort({ trustScore: 1, createdAt: -1 });
     res.json(users);
   } catch (err) {
     res.status(500).json({ error: "Kullanıcılar getirilemedi" });
@@ -346,6 +369,24 @@ app.post('/api/admin/update-user', async (req, res) => {
 
 // Güven Skoru Otomasyonu (Örnek: Like alınca artar)
 // Bu mantığı mevcut socket.on('like_partner') içine de entegre edebilirsin
+
+async function updateTrustScore(userId, change) {
+  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) return;
+  
+  try {
+    const user = await User.findById(userId);
+    if (user) {
+      // Skoru 0 ile 100 arasında tutalım
+      let newScore = (user.trustScore || 100) + change;
+      newScore = Math.max(0, Math.min(100, newScore));
+      
+      await User.findByIdAndUpdate(userId, { trustScore: newScore });
+      console.log(`⚖️ Güven Skoru Güncellendi: ${user.name} (${newScore})`);
+    }
+  } catch (err) {
+    console.error("Güven skoru güncelleme hatası:", err);
+  }
+}
 
 const PORT = process.env.PORT || 5001;
 server.listen(PORT, "0.0.0.0", () => console.log(`🚀 Sunucu ${PORT} portunda yayında.`));
