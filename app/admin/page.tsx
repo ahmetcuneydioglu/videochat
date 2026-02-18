@@ -28,6 +28,24 @@ export default function AdminDashboard() {
   // Eklenen: Rapor verisini modal'a taşımak için
   const [imageReportData, setImageReportData] = useState<any>(null);
 
+  // Sayfa yüklendiğinde daha önce giriş yapılmış mı kontrol et
+  useEffect(() => {
+    const savedAuth = localStorage.getItem("adminAuth");
+    if (savedAuth === "true") {
+      setIsLoggedIn(true);
+    }
+  }, []);
+
+  const handleLogin = () => {
+    if (password === "admin123") {
+      setIsLoggedIn(true);
+      localStorage.setItem("adminAuth", "true"); // Şifreyi hatırla
+    } else {
+      alert("Hatalı Güvenlik Kodu!");
+    }
+  };  
+
+
   // --- API İŞLEMLERİ ---
   const fetchData = async () => {
     try {
@@ -121,22 +139,37 @@ export default function AdminDashboard() {
   // --- GİRİŞ EKRANI ---
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4">
-        <div className="bg-zinc-900 border border-zinc-800 p-10 rounded-[40px] w-full max-sm shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 animate-pulse"></div>
-          <h2 className="text-2xl font-black mb-8 text-white text-center italic uppercase tracking-tighter">Komuta Merkezi</h2>
-          <input 
-            type="password" 
-            placeholder="Güvenlik Kodu" 
-            className="w-full bg-zinc-800 p-4 rounded-2xl mb-4 text-white outline-none border border-zinc-700 focus:border-blue-500 transition-all text-center tracking-[0.5em] font-bold" 
-            onChange={(e) => setPassword(e.target.value)} 
-          />
-          <button 
-            onClick={() => password === "admin123" && setIsLoggedIn(true)} 
-            className="w-full bg-blue-600 py-4 rounded-2xl font-bold text-white uppercase tracking-widest hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/20 active:scale-95"
-          >
-            SİSTEME GİRİŞ
-          </button>
+      <div className="fixed inset-0 z-[2000] bg-[#050505] flex items-center justify-center p-6 select-none">
+        <div className="bg-[#111113] border border-white/5 p-12 rounded-[48px] w-full max-w-sm shadow-2xl relative overflow-hidden text-center">
+          {/* Üst Dekoratif Çizgi */}
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600"></div>
+          
+          <div className="mb-8">
+            <h2 className="text-4xl font-black italic tracking-tighter text-white uppercase italic">OMEGPT</h2>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.4em] mt-2">Control Center</p>
+          </div>
+
+          <div className="space-y-4">
+            <input 
+              type="password" 
+              placeholder="••••••" 
+              autoFocus
+              className="w-full bg-white/5 border border-white/10 p-5 rounded-3xl text-white outline-none focus:border-blue-500 transition-all text-center tracking-[1em] font-black text-xl placeholder:tracking-normal placeholder:font-normal placeholder:text-zinc-700" 
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+            />
+            
+            <button 
+              onClick={handleLogin} 
+              className="w-full bg-white text-black py-5 rounded-3xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all active:scale-95 shadow-xl shadow-white/5"
+            >
+              Access System
+            </button>
+          </div>
+
+          <p className="mt-8 text-[9px] text-zinc-700 font-bold uppercase tracking-widest">
+            Authorized Personnel Only
+          </p>
         </div>
       </div>
     );

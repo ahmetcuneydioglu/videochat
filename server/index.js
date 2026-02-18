@@ -21,6 +21,7 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
+// HTTPS yönlendirmesi (Production için)
 app.use((req, res, next) => {
     if (req.header('x-forwarded-proto') !== 'https' && process.env.NODE_ENV === 'production') {
         res.redirect(`https://${req.header('host')}${req.url}`);
@@ -31,6 +32,14 @@ app.use((req, res, next) => {
 
 const server = http.createServer(app);
 
+// Socket.io Ayarları
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Mobil uygulama için * izin veriyoruz
+    methods: ["GET", "POST"]
+  }
+});
+
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ahmetcnd:Ahmet263271@videochat.vok6vud.mongodb.net/videochat?retryWrites=true&w=majority';
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('✅ MongoDB Bağlantısı Başarılı'))
@@ -38,316 +47,262 @@ mongoose.connect(MONGODB_URI)
 
 // --- MODELLER ---
 const UserSchema = new mongoose.Schema({
-  googleId: { type: String, unique: true, sparse: true },
-  email: { type: String, unique: true, sparse: true },
-  name: String,
+  googleId: String,
+  email: String,
+  username: String,
   avatar: String,
-  likes: { type: Number, default: 0 },
-  isRegistered: { type: Boolean, default: false },
-  role: { type: String, default: 'user' }, // 'user', 'vip', 'admin'
-  trustScore: { type: Number, default: 100 }, // Güven Skoru (0-100)
-  status: { type: String, default: 'active' }, // 'active', 'shadow_banned'
-  lastSeen: { type: Date, default: Date.now },
+  role: { type: String, default: 'user' }, // 'user', 'moderator', 'admin'
+  isBanned: { type: Boolean, default: false },
+  banExpires: Date,
+  isPremium: { type: Boolean, default: false },
+  trustScore: { type: Number, default: 100 },
+  reportsReceived: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }
 });
-
 const User = mongoose.model('User', UserSchema);
 
-// DÜZELTME: Ban şemasına expireAt eklendi
-const BanSchema = new mongoose.Schema({ 
-  ip: String, 
-  reason: String, 
-  date: { type: Date, default: Date.now },
-  expireAt: { type: Date } // Ban bitiş süresi
+const ReportSchema = new mongoose.Schema({
+  reporterId: String, // Socket ID veya DB ID
+  reportedId: String,
+  reason: String,
+  timestamp: { type: Date, default: Date.now },
+  status: { type: String, default: 'pending' } // pending, resolved, dismissed
 });
-const Ban = mongoose.model('Ban', BanSchema);
+const Report = mongoose.model('Report', ReportSchema);
 
-const Report = mongoose.model('Report', new mongoose.Schema({ reporterId: String, reportedId: String, reportedIP: String, screenshot: String, date: { type: Date, default: Date.now } }));
-const Log = mongoose.model('Log', new mongoose.Schema({ userId: String, userIP: String, action: String, targetId: String, duration: Number, date: { type: Date, default: Date.now } }));
-
-let globalQueue = [];
-const activeMatches = new Map();
-const userDetails = new Map();
-
-if (!global.liveMatches) global.liveMatches = new Map();
-
-const client = new OAuth2Client("18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com");
-
-app.post('/api/auth/social-login', async (req, res) => {
-  const { token } = req.body;
-  try {
-    const ticket = await client.verifyIdToken({ idToken: token, audience: "18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com" });
-    const payload = ticket.getPayload();
-    let user = await User.findOne({ googleId: payload['sub'] });
-    if (!user) {
-      user = new User({ googleId: payload['sub'], email: payload['email'], name: payload['name'], avatar: payload['picture'], isRegistered: true });
-      await user.save();
-    }
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ error: "Giriş başarısız" });
-  }
+const MessageSchema = new mongoose.Schema({
+    senderId: String,
+    receiverId: String,
+    text: String,
+    timestamp: { type: Date, default: Date.now }
 });
+const Message = mongoose.model('Message', MessageSchema);
 
-const io = new Server(server, {
-  cors: {
-    origin: allowedOrigins, // <-- DÜZELTİLDİ
-    methods: ["GET", "POST"],
-    credentials: true
-  },
-  transports: ["polling", "websocket"]
-});
+const client = new OAuth2Client("68579736284-825595304655-246536647241.apps.googleusercontent.com");
 
-const getMatchId = (id1, id2) => [id1, id2].sort().join('_');
+// --- SOCKET.IO MANTIGI ---
+let waitingUsers = []; // Kuyruk
 
-io.on('connection', async (socket) => {
-  let userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
-  if (userIP.includes(',')) userIP = userIP.split(',')[0].trim();
-  if (userIP === '::1' || userIP === '127.0.0.1') userIP = '176.234.224.0';
-  
-  // DÜZELTME: Bağlantı anında süreli ban kontrolü
-  const activeBan = await Ban.findOne({ 
-    ip: userIP, 
-    expireAt: { $gt: new Date() } // Süresi henüz dolmamış banları bul
-  });
+io.on('connection', (socket) => {
+  console.log(`🔌 Yeni Bağlantı: ${socket.id}`);
 
-  if (activeBan) {
-      console.log(`🚫 Yasaklı Kullanıcı Engellendi: ${userIP} (Bitiş: ${activeBan.expireAt})`);
-      // Frontend'e neden engellendiğini ve süreyi gönder
-      socket.emit('connection_refused', { 
-        reason: activeBan.reason, 
-        expireAt: activeBan.expireAt 
-      });
-      return socket.disconnect();
-  }
-
-  const geo = geoip.lookup(userIP);
-  const countryCode = geo ? geo.country : 'UN';
-
-  console.log(`👤 Yeni Bağlantı: ${socket.id.slice(0,6)}... (IP: ${userIP}, Ülke: ${countryCode})`);
-
-  const dbUserId = socket.handshake.query.dbUserId; 
-  let currentLikes = 0; let isRegistered = false;
-
-  if (dbUserId && mongoose.Types.ObjectId.isValid(dbUserId)) {
-    const dbUser = await User.findById(dbUserId);
-    if (dbUser) { currentLikes = dbUser.likes; isRegistered = true;
-  socket.emit('update_my_likes', { likes: dbUser.likes });}
-  }
-
-  userDetails.set(socket.id, { id: socket.id, dbId: dbUserId || null, ip: userIP, country: countryCode, status: 'IDLE', likes: currentLikes, isRegistered, myGender: 'male' });
-
-  socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
-    console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender}, Aradığı: ${searchGender}, Bölge: ${selectedCountry})`);
+  // 1. EŞLEŞME İSTEĞİ (MOBİL UYUMLU GÜNCELLEME)
+  socket.on('find_partner', async (data) => {
+    // Mobil veya Web'den gelen verileri al
+    const { myGender, searchGender, selectedCountry, username, token } = data;
     
-    const existingPartner = activeMatches.get(socket.id);
-    if (existingPartner) {
-        console.log(`⚠️ GÜVENLİK: [${socket.id.slice(0,6)}] yeni arama yaptı ama eski eşleşmesi askıda kalmış. Temizleniyor...`);
-        io.to(existingPartner).emit('partner_left_auto_next');
-        activeMatches.delete(socket.id);
-        activeMatches.delete(existingPartner);
-        if (global.liveMatches) global.liveMatches.delete(getMatchId(socket.id, existingPartner));
+    // IP bazlı ülke bulma
+    let ip = socket.handshake.headers['x-forwarded-for'] || socket.request.connection.remoteAddress;
+    let country = selectedCountry !== 'all' ? selectedCountry : (geoip.lookup(ip)?.country || 'TR');
+
+    let isPremium = false;
+    let dbId = null;
+    let trustScore = 100;
+    
+    // Eğer token varsa DB'den kullanıcıyı bul
+    if (token) {
+        try {
+            const ticket = await client.verifyIdToken({
+                idToken: token,
+                audience: "68579736284-825595304655-246536647241.apps.googleusercontent.com",
+            });
+            const payload = ticket.getPayload();
+            const user = await User.findOne({ email: payload.email });
+            if (user) {
+                if (user.isBanned && user.banExpires > new Date()) {
+                    socket.emit('error', 'Hesabınız yasaklı.');
+                    return;
+                }
+                isPremium = user.isPremium;
+                dbId = user._id;
+                trustScore = user.trustScore;
+            }
+        } catch (e) {
+            console.log("Token doğrulama hatası:", e.message);
+        }
     }
 
-    globalQueue = globalQueue.filter(item => item.id !== socket.id);
-    const u = userDetails.get(socket.id);
-    if (u) { u.status = 'SEARCHING'; u.myGender = myGender; }
-
-    const tryMatch = () => {
-      const partnerIndex = globalQueue.findIndex(p => {
-        const genderMatch = (searchGender === 'all' || searchGender === p.myGender) && (p.searchGender === 'all' || p.searchGender === myGender);
-        const countryMatch = (selectedCountry === 'all' || selectedCountry === p.countryCode);
-        return genderMatch && countryMatch && p.id !== socket.id;
-      });
-
-      if (partnerIndex !== -1) {
-        const partner = globalQueue[partnerIndex];
-        globalQueue.splice(partnerIndex, 1);
-        
-        activeMatches.set(socket.id, partner.id);
-        activeMatches.set(partner.id, socket.id);
-        
-        const myDetails = userDetails.get(socket.id);
-        const pDetails = userDetails.get(partner.id);
-        if (myDetails) myDetails.status = 'BUSY';
-        if (pDetails) pDetails.status = 'BUSY';
-
-        const matchId = getMatchId(socket.id, partner.id);
-        global.liveMatches.set(matchId, {
-            id: matchId,
-            user1: { id: socket.id, country: countryCode, ip: userIP },
-            user2: { id: partner.id, country: partner.countryCode, ip: pDetails ? pDetails.ip : 'N/A' },
-            startTime: new Date()
-        });
-
-        console.log(`🎉 EŞLEŞME BAŞARILI: [${socket.id.slice(0,6)}] ❤️ [${partner.id.slice(0,6)}]`);
-
-        io.to(socket.id).emit('partner_found', { partnerId: partner.id, initiator: true, country: partner.countryCode, partnerGender: partner.myGender, partnerLikes: pDetails ? pDetails.likes : 0 });
-        io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false, country: countryCode, partnerGender: myGender, partnerLikes: myDetails ? myDetails.likes : 0 });
-        return true;
-      }
-      return false;
+    // Kullanıcı verisini oluştur
+    const userData = {
+      id: socket.id,
+      dbId: dbId,
+      gender: myGender || 'male',
+      searchGender: searchGender || 'all',
+      country: country,
+      username: username || 'Guest', // Mobilden gelen username'i kullan
+      isPremium: isPremium,
+      trustScore: trustScore,
+      partnerId: null
     };
 
-    if (!tryMatch()) {
-      globalQueue.push({ id: socket.id, myGender, searchGender, countryCode, selectedCountry });
-      console.log(`⏳ [${socket.id.slice(0,6)}] Kuyruğa eklendi. Kuyrukta bekleyen: ${globalQueue.length} kişi`);
-    }
-  });
+    // --- KRİTİK DÜZELTME: Socket'e veriyi yapıştır ---
+    socket.userData = userData; 
 
-  socket.on('next_user', () => {
-  const partnerId = activeMatches.get(socket.id);
-  
-  // Süreyi hesaplamak için match verisini çekiyoruz
-  const matchId = getMatchId(socket.id, partnerId);
-  const match = global.liveMatches.get(matchId);
+    // Kuyruktan uygun partner ara
+    const partnerIndex = waitingUsers.findIndex((user) => {
+      if (user.id === socket.id) return false; // Kendisiyle eşleşmesin
 
-  if (match && partnerId) {
-    const duration = (new Date() - match.startTime) / 1000;
-    const myDetails = userDetails.get(socket.id);
-    const pDetails = userDetails.get(partnerId);
+      // Cinsiyet Filtresi
+      const genderMatch = (userData.searchGender === 'all' || userData.searchGender === user.gender) &&
+                          (user.searchGender === 'all' || user.searchGender === userData.gender);
+      
+      // Ülke Filtresi
+      const countryMatch = (userData.country === 'all' || userData.country === user.country) &&
+                           (user.country === 'all' || user.country === userData.country);
 
-    // 2 dakikadan fazlaysa her iki kayıtlı kullanıcıya puan ver
-    if (duration > 120) {
-      if (myDetails?.dbId) updateTrustScore(myDetails.dbId, 5);
-      if (pDetails?.dbId) updateTrustScore(pDetails.dbId, 5);
-    }
+      // Güven Skoru (Basit mantık)
+      const scoreMatch = Math.abs(userData.trustScore - user.trustScore) < 30;
 
-    console.log(`⏭️ [${socket.id.slice(0,6)}] NEXT dedi.`);
-    io.to(partnerId).emit('partner_left_auto_next');
-    activeMatches.delete(socket.id);
-    activeMatches.delete(partnerId);
-    global.liveMatches.delete(matchId);
-    
-    const p = userDetails.get(partnerId);
-    if (p) p.status = 'SEARCHING';
-  }
-});
-
-  socket.on('stop_search', () => {
-    console.log(`⏹️ [${socket.id.slice(0,6)}] Aramayı tamamen durdurdu.`);
-    globalQueue = globalQueue.filter(u => u.id !== socket.id);
-    const u = userDetails.get(socket.id);
-    if (u) u.status = 'IDLE';
-    const partnerId = activeMatches.get(socket.id);
-    if (partnerId) {
-        io.to(partnerId).emit('partner_left_auto_next');
-        activeMatches.delete(socket.id);
-        activeMatches.delete(partnerId);
-        if (global.liveMatches) global.liveMatches.delete(getMatchId(socket.id, partnerId));
-    }
-  });
-
-  socket.on('signal', (data) => {
-    io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
-  });
-
-  socket.on('disconnect', () => {
-    console.log(`❌ Bağlantı Koptu: [${socket.id.slice(0,6)}]`);
-    const partnerId = activeMatches.get(socket.id);
-    if (partnerId) {
-      io.to(partnerId).emit('partner_left_auto_next');
-      activeMatches.delete(partnerId);
-      if (global.liveMatches) global.liveMatches.delete(getMatchId(socket.id, partnerId));
-    }
-    userDetails.delete(socket.id);
-    globalQueue = globalQueue.filter(u => u.id !== socket.id);
-    activeMatches.delete(socket.id);
-  });
-  
-  socket.on('like_partner', async ({ targetId, increaseCounter, currentSessionLikes }) => {
-    const me = userDetails.get(socket.id); const partner = userDetails.get(targetId);
-    if (me && partner && increaseCounter && me.isRegistered && partner.dbId) {
-        await User.findByIdAndUpdate(partner.dbId, { $inc: { likes: 1 } });
-        partner.likes += 1;
-    }
-    io.to(targetId).emit('receive_like', { 
-        newLikes: partner.likes, 
-        senderSessionLikes: currentSessionLikes,
-        isForMe: true // <--- Bu bayrak sayesinde Frontend kimin beğeni aldığını anlar
+      return genderMatch && countryMatch; 
     });
 
-    updateTrustScore(partner.dbId, 2);
-    
+    if (partnerIndex !== -1) {
+      // PARTNER BULUNDU
+      const partner = waitingUsers.splice(partnerIndex, 1)[0];
+      
+      socket.userData.partnerId = partner.id;
+      partner.partnerId = socket.id; // Partnerin socket nesnesine erişemiyoruz ama id'sini biliyoruz
+
+      // Partnerin socket nesnesini bulup güncellememiz lazım (Opsiyonel ama iyi olur)
+      const partnerSocket = io.sockets.sockets.get(partner.id);
+      if(partnerSocket) partnerSocket.userData.partnerId = socket.id;
+
+      // Her iki tarafa da haber ver
+      io.to(socket.id).emit('partner_found', { partnerId: partner.id, initiator: true });
+      io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false });
+
+      console.log(`✅ Eşleşme: ${socket.id} <-> ${partner.id}`);
+    } else {
+      // PARTNER YOK, KUYRUĞA EKLE
+      // Eğer zaten kuyruktaysa güncelle
+      const existingIndex = waitingUsers.findIndex(u => u.id === socket.id);
+      if (existingIndex !== -1) {
+          waitingUsers[existingIndex] = userData;
+      } else {
+          waitingUsers.push(userData);
+      }
+      console.log(`⏳ Kuyrukta Bekliyor: ${socket.id} (Toplam: ${waitingUsers.length})`);
+    }
   });
 
-  socket.on('report_user', async ({ reportedId, screenshot }) => {
-    const reported = userDetails.get(reportedId);
-    const reportedUser = userDetails.get(reportedId);
-    if (reported) {
-        await new Report({ reporterId: socket.id, reportedId, reportedIP: reported.ip, screenshot, date: new Date() }).save();
-        reported.reports = (reported.reports || 0) + 1;
-        console.log(`⚠️ KULLANICI RAPORLANDI: [${reportedId}]`);
-    }
+  // 2. SIGNALING: OFFER (KRİTİK DÜZELTME YAPILDI)
+  socket.on('offer', (data) => {
+    // Mobilden gelen 'user' verisini öncelikli kullan, yoksa socket.userData'ya bak
+    const senderUser = data.user || socket.userData || { username: "Mobile User", gender: "male" };
+    
+    // Veriyi zenginleştirerek karşıya ilet
+    io.to(data.to).emit('offer', {
+        offer: data.offer,
+        from: socket.id,
+        user: senderUser, // Web tarafı bunu bekliyor!
+        isMobile: data.isMobile || false
+    });
+  });
 
-    if (reportedUser && reportedUser.dbId) {
-      updateTrustScore(reportedUser.dbId, -15);
+  // 3. SIGNALING: ANSWER (KRİTİK DÜZELTME YAPILDI)
+  socket.on('answer', (data) => {
+    // Mobilden gelen 'user' verisini öncelikli kullan
+    const responderUser = data.user || socket.userData || { username: "Mobile User", gender: "male" };
+
+    io.to(data.to).emit('answer', {
+        answer: data.answer,
+        to: socket.id,
+        user: responderUser // Web tarafı bunu bekliyor!
+    });
+  });
+
+  // 4. SIGNALING: ICE CANDIDATE
+  socket.on('ice_candidate', (data) => {
+    // Eğer partnerId yoksa (henüz userData'ya işlenmediyse) data.to kullanabiliriz (varsa)
+    // Ancak en garantisi partnerId'yi socket üzerinde tutmaktır.
+    const partnerId = socket.userData?.partnerId; 
+    
+    if (partnerId) {
+        io.to(partnerId).emit('ice_candidate', {
+            candidate: data.candidate,
+            from: socket.id
+        });
+    } else {
+        // Alternatif: Mobile'dan 'to' geliyorsa onu kullan (Gelmeyebilir ama yedek olsun)
+        // Genelde ice_candidate payload'unda 'to' gönderilmez ama ekleyebiliriz.
+        // Şimdilik partnerId üzerinden gidiyoruz.
+    }
+  });
+
+  // --- MESAJLAŞMA ---
+  socket.on('message', async (data) => {
+      const partnerId = socket.userData?.partnerId;
+      if (partnerId) {
+          io.to(partnerId).emit('message', { 
+              text: data.text, 
+              from: socket.id,
+              timestamp: new Date()
+          });
+          
+          // Mesajı DB'ye kaydet (Opsiyonel, performans için kapatılabilir)
+          // await Message.create({ senderId: socket.id, receiverId: partnerId, text: data.text });
       }
   });
 
-});
-
-// --- ADMIN API ---
-app.get('/api/admin/active-users', (req, res) => res.json(Array.from(userDetails.values())));
-app.get('/api/reports', async (req, res) => res.json(await Report.find().sort({ date: -1 }).limit(50)));
-app.delete('/api/reports/:id', async (req, res) => { await Report.findByIdAndDelete(req.params.id); res.json({ success: true }); });
-
-// Sadece aktif (süresi dolmamış) banları getir
-app.get('/api/bans', async (req, res) => {
-  const activeBans = await Ban.find({ expireAt: { $gt: new Date() } });
-  res.json(activeBans);
-});
-
-app.delete('/api/bans/:ip', async (req, res) => { await Ban.findOneAndDelete({ ip: req.params.ip }); res.json({ success: true }); });
-app.get('/api/admin/stats', async (req, res) => {
-  // Stats kısmında da sadece aktif banları sayalım
-  const totalActiveBans = await Ban.countDocuments({ expireAt: { $gt: new Date() } });
-  res.json({ activeUsers: userDetails.size, totalBans: totalActiveBans, pendingReports: await Report.countDocuments(), totalMatchesToday: 0 });
-});
-app.get('/api/admin/active-matches', (req, res) => res.json(global.liveMatches ? Array.from(global.liveMatches.values()) : []));
-
-// DÜZELTME: Banlama işlemi 24 saatlik süre ile yapılır
-app.post('/api/ban-user', async (req, res) => {
-  const { ip, reportedId, reason } = req.body;
-  
-  // 24 saat sonrasını hesapla
-  const expireDate = new Date();
-  expireDate.setHours(expireDate.getHours() + 24);
-
-  await new Ban({ 
-    ip, 
-    reason: reason || "Kurallara Aykırı Davranış", 
-    expireAt: expireDate 
-  }).save();
-
-  if (reportedId) {
-    // Kişiye 24 saat banlandığını bildir
-    io.to(reportedId).emit('account_banned', { 
-      reason: reason || "Topluluk kurallarını ihlal ettiniz.",
-      expireAt: expireDate
-    });
+  // --- KOPMA / AYRILMA ---
+  socket.on('disconnect', () => {
+    console.log(`❌ Ayrıldı: ${socket.id}`);
     
-    // Mesajın ulaşması için kısa bir süre bekleyip bağlantıyı kopar
-    const s = io.sockets.sockets.get(reportedId);
-    if (s) {
-      setTimeout(() => {
-        s.disconnect();
-      }, 1500);
-    } 
-  }
-  res.json({ success: true });
+    // Kuyruktan sil
+    waitingUsers = waitingUsers.filter(user => user.id !== socket.id);
+    
+    // Partneri varsa ona haber ver
+    const partnerId = socket.userData?.partnerId;
+    if (partnerId) {
+        io.to(partnerId).emit('partner_disconnected');
+        
+        // Partnerin partner bilgisini temizle
+        const partnerSocket = io.sockets.sockets.get(partnerId);
+        if (partnerSocket && partnerSocket.userData) {
+            partnerSocket.userData.partnerId = null;
+        }
+    }
+  });
+
+  // --- REPORT SİSTEMİ ---
+  socket.on('report_user', async (data) => {
+      const { reason } = data;
+      const reportedId = socket.userData?.partnerId;
+      
+      if (reportedId) {
+          console.log(`🚩 Rapor: ${socket.id} -> ${reportedId} (${reason})`);
+          
+          // DB'ye kaydet
+          await Report.create({
+              reporterId: socket.id, // Veya dbId
+              reportedId: reportedId,
+              reason: reason
+          });
+
+          // Raporlanan kullanıcının güven skorunu düşür
+          // updateTrustScore(reportedId, -10); // Fonksiyon aşağıda
+      }
+  });
+
+  // Login (Mobil için basit auth)
+  socket.on('login', (data) => {
+      socket.userData = {
+          ...socket.userData,
+          username: data.username || 'Guest',
+          gender: data.gender || 'male'
+      };
+      console.log(`🔑 Login: ${socket.id} as ${socket.userData.username}`);
+  });
 });
 
-app.post('/api/admin/kill-match', (req, res) => {
-    const { matchId, user1Id, user2Id } = req.body;
-    io.to(user1Id).emit('partner_left_auto_next'); io.to(user2Id).emit('partner_left_auto_next');
-    if (global.liveMatches) global.liveMatches.delete(matchId);
-    res.json({ success: true });
-});
+// --- API ROUTES ---
 
-// Tüm Kayıtlı Kullanıcıları Listele (Admin)
-// Düşük trustScore en üstte olacak şekilde sırala (1: artan, -1: azalan)
-app.get('/api/admin/all-users', async (req, res) => {
+// Admin Panel: Kullanıcıları Listele
+app.get('/api/admin/users', async (req, res) => {
+  // Basit bir güvenlik: Header'da 'admin-secret' bekle
+  // const secret = req.headers['admin-secret'];
+  // if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({error: 'Unauthorized'});
+
   try {
     const users = await User.find().sort({ trustScore: 1, createdAt: -1 });
     res.json(users);
@@ -356,7 +311,7 @@ app.get('/api/admin/all-users', async (req, res) => {
   }
 });
 
-// Kullanıcı Güncelleme (Role, Status, TrustScore vb.)
+// Kullanıcı Güncelleme
 app.post('/api/admin/update-user', async (req, res) => {
   const { userId, updateData } = req.body;
   try {
@@ -367,26 +322,24 @@ app.post('/api/admin/update-user', async (req, res) => {
   }
 });
 
-// Güven Skoru Otomasyonu (Örnek: Like alınca artar)
-// Bu mantığı mevcut socket.on('like_partner') içine de entegre edebilirsin
-
 async function updateTrustScore(userId, change) {
-  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) return;
+  // console.log(`🔍 Skor Güncelleme İsteği: ID=${userId}, Değişim=${change}`);
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) return;
   
   try {
     const user = await User.findById(userId);
     if (user) {
-      // Skoru 0 ile 100 arasında tutalım
       let newScore = (user.trustScore || 100) + change;
       newScore = Math.max(0, Math.min(100, newScore));
-      
-      await User.findByIdAndUpdate(userId, { trustScore: newScore });
-      console.log(`⚖️ Güven Skoru Güncellendi: ${user.name} (${newScore})`);
+      user.trustScore = newScore;
+      await user.save();
     }
-  } catch (err) {
-    console.error("Güven skoru güncelleme hatası:", err);
+  } catch (e) {
+      console.error("Skor güncellenemedi:", e);
   }
 }
 
-const PORT = process.env.PORT || 5001;
-server.listen(PORT, "0.0.0.0", () => console.log(`🚀 Sunucu ${PORT} portunda yayında.`));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🚀 Server ${PORT} portunda çalışıyor`);
+});
