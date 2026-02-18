@@ -35,8 +35,17 @@ const server = http.createServer(app);
 // Socket.io Ayarları
 const io = new Server(server, {
   cors: {
-    origin: "*", // Mobil uygulama için * izin veriyoruz
-    methods: ["GET", "POST"]
+    // BURASI ÇOK ÖNEMLİ: '*' yerine açıkça izin verilen originleri kullanmalıyız
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || origin.includes("localhost")) {
+        callback(null, true);
+      } else {
+        // Mobil uygulamalar bazen 'origin' göndermez, onlara da izin ver
+        callback(null, true); 
+      }
+    },
+    methods: ["GET", "POST"],
+    credentials: true // Hatanın ana çözümü bu satırla uyumlu origin kullanımıdır
   }
 });
 
