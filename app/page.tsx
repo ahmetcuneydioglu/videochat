@@ -347,6 +347,29 @@ export default function Home() {
     setPartnerSessionLikes(0);
   };
 
+  // 🔥 iOS için H264 önceliklendirme
+function preferH264(sdp: string) {
+  const lines = sdp.split('\r\n');
+  const mLineIndex = lines.findIndex(l => l.startsWith('m=video'));
+  if (mLineIndex === -1) return sdp;
+
+  const h264Line = lines.find(l => l.toLowerCase().includes('h264'));
+  if (!h264Line) return sdp;
+
+  const payload = h264Line.split(' ')[0].split(':')[1];
+  const mLineParts = lines[mLineIndex].split(' ');
+
+  const newLine = [
+    ...mLineParts.slice(0, 3),
+    payload,
+    ...mLineParts.slice(3).filter(p => p !== payload),
+  ].join(' ');
+
+  lines[mLineIndex] = newLine;
+  return lines.join('\r\n');
+}
+
+
         function initiatePeer(targetId: string, initiator: boolean) {
           if (!streamRef.current) {
               console.error("❌ HATA: Kamera/Mikrofon akışı bulunamadı. Peer başlatılamaz.");
@@ -370,10 +393,16 @@ export default function Home() {
               }
           });
 
-          peer.on("signal", (data) => {
-              console.log(`📡 Sinyal gönderiliyor (Hedef: ${targetId}, Tip: ${data.type})`);
-              socket.emit("signal", { to: targetId, signal: data });
-          });
+         peer.on("signal", (data: any) => {
+            console.log(`📡 Sinyal gönderiliyor (Hedef: ${targetId}, Tip: ${data.type})`);
+
+            if ((data.type === "offer" || data.type === "answer") && data.sdp) {
+                data.sdp = preferH264(data.sdp);
+            }
+
+            socket.emit("signal", { to: targetId, signal: data });
+        });
+
 
           peer.on("stream", (remStream) => { 
               console.log("✅ Karşı tarafın video akışı (Stream) başarıyla alındı.");
