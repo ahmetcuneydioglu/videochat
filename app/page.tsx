@@ -2,8 +2,6 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { io } from "socket.io-client";
 import Peer from "simple-peer";
-import { Buffer } from 'buffer';
-global.Buffer = Buffer;
 import { countries as rawCountries } from 'countries-list';
 import { 
   Video, VideoOff, Mic, MicOff, RefreshCw, 
