@@ -137,6 +137,35 @@ io.on('connection', async (socket) => {
 
   userDetails.set(socket.id, { id: socket.id, dbId: dbUserId || null, ip: userIP, country: countryCode, status: 'IDLE', likes: currentLikes, isRegistered, myGender: 'male' });
 
+  // --- WEBRTC SIGNALING FORWARDERS (offer/answer/ice_candidate) ---
+function getVerifiedPartnerId(socket, to) {
+  const partnerId = to || activeMatches.get(socket.id);
+  if (!partnerId) return null;
+
+  // Güvenlik: gerçekten şu an eşleşik mi?
+  if (activeMatches.get(partnerId) !== socket.id) return null;
+  return partnerId;
+}
+
+socket.on('offer', ({ offer, to, user }) => {
+  const partnerId = getVerifiedPartnerId(socket, to);
+  if (!partnerId || !offer) return;
+  io.to(partnerId).emit('offer', { from: socket.id, offer, user });
+});
+
+socket.on('answer', ({ answer, to, user }) => {
+  const partnerId = getVerifiedPartnerId(socket, to);
+  if (!partnerId || !answer) return;
+  io.to(partnerId).emit('answer', { from: socket.id, answer, user });
+});
+
+socket.on('ice_candidate', ({ candidate, to }) => {
+  const partnerId = getVerifiedPartnerId(socket, to);
+  if (!partnerId || !candidate) return;
+  io.to(partnerId).emit('ice_candidate', { from: socket.id, candidate });
+});
+
+
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
     console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender}, Aradığı: ${searchGender}, Bölge: ${selectedCountry})`);
     
