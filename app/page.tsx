@@ -371,38 +371,56 @@ function preferH264(sdp: string) {
 
 
         function initiatePeer(targetId: string, initiator: boolean) {
-          if (!streamRef.current) {
-              console.error("❌ HATA: Kamera/Mikrofon akışı bulunamadı. Peer başlatılamaz.");
-              return;
-          }
-          
-          console.log(`🔗 Peer başlatılıyor... Hedef ID: ${targetId}, Başlatan Ben miyim?: ${initiator}`);
-
-          const peer = new Peer({ 
-              initiator, 
-              trickle: true, 
-              stream: streamRef.current,
-              config: { 
-                  iceServers: [
-                      { urls: 'stun:stun.l.google.com:19302' }, 
-                      { urls: 'stun:stun1.l.google.com:19302' },
-                      // Eğer Render'da veya bazı ağlarda STUN engelleniyorsa diye yedek ekliyoruz
-                      { urls: 'stun:stun.l.google.com:19305' },
-                      { urls: 'stun:stun.sipgate.net:10000' }
-                  ] 
-              }
-          });
-
-         peer.on("signal", (data: any) => {
-            console.log(`📡 Sinyal gönderiliyor (Hedef: ${targetId}, Tip: ${data.type})`);
-
-            if ((data.type === "offer" || data.type === "answer") && data.sdp) {
-                data.sdp = preferH264(data.sdp);
+            if (!streamRef.current) {
+                console.error("❌ HATA: Kamera/Mikrofon akışı bulunamadı. Peer başlatılamaz.");
+                return;
             }
+            
+            console.log(`🔗 Peer başlatılıyor... Hedef ID: ${targetId}, Başlatan Ben miyim?: ${initiator}`);
 
-            socket.emit("signal", { to: targetId, signal: data });
-        });
+            const peer = new Peer({ 
+                initiator, 
+                trickle: true, 
+                stream: streamRef.current,
+                config: { 
+                    iceServers: [
+                        // Mevcut STUN Sunucuların (IP Adresi Bulur)
+                        {
+                            urls: "stun:stun.relay.metered.ca:80",
+                          },
+                          {
+                            urls: "turn:global.relay.metered.ca:80",
+                            username: "bfb4db94fc1c17517e4df2dc",
+                            credential: "dGFFGnHjjO0mv4ld",
+                          },
+                          {
+                            urls: "turn:global.relay.metered.ca:80?transport=tcp",
+                            username: "bfb4db94fc1c17517e4df2dc",
+                            credential: "dGFFGnHjjO0mv4ld",
+                          },
+                          {
+                            urls: "turn:global.relay.metered.ca:443",
+                            username: "bfb4db94fc1c17517e4df2dc",
+                            credential: "dGFFGnHjjO0mv4ld",
+                          },
+                          {
+                            urls: "turns:global.relay.metered.ca:443?transport=tcp",
+                            username: "bfb4db94fc1c17517e4df2dc",
+                            credential: "dGFFGnHjjO0mv4ld",
+                          }
+                    ] 
+                }
+            });
 
+            peer.on("signal", (data: any) => {
+                console.log(`📡 Sinyal gönderiliyor (Hedef: ${targetId}, Tip: ${data.type})`);
+
+                if ((data.type === "offer" || data.type === "answer") && data.sdp) {
+                    data.sdp = preferH264(data.sdp);
+                }
+
+                socket.emit("signal", { to: targetId, signal: data });
+            });
 
           peer.on("stream", (remStream) => { 
               console.log("✅ Karşı tarafın video akışı (Stream) başarıyla alındı.");
@@ -427,13 +445,13 @@ function preferH264(sdp: string) {
           peerRef.current = peer;
         }
 
-  const handleNext = () => {
-    if (!isActiveRef.current) return;
-    cleanUpPeer();
-    setIsSearching(true);
-    // YERLERİ DEĞİŞTİ: Önce eskisini kopar, SONRA aramaya başla
-    socket.emit("next_user"); 
-    socket.emit("find_partner", { myGender, searchGender, selectedCountry });
+        const handleNext = () => {
+          if (!isActiveRef.current) return;
+          cleanUpPeer();
+          setIsSearching(true);
+          // YERLERİ DEĞİŞTİ: Önce eskisini kopar, SONRA aramaya başla
+          socket.emit("next_user"); 
+          socket.emit("find_partner", { myGender, searchGender, selectedCountry });
   };
 
 
