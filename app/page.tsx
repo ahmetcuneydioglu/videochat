@@ -226,20 +226,9 @@ export default function Home() {
       if (isActiveRef.current) setTimeout(() => handleNext(), 1000);
     });
 
-    // page.tsx içindeki socket.on("signal") kısmını bununla değiştir
-      socket.on("signal", (data) => {
-          if (peerRef.current) {
-              const { signal } = data;
-              
-              // Mobil taraftan gelen veriyi simple-peer'ın anlayacağı dile çeviriyoruz
-              if (signal.type === 'ice' || signal.type === 'candidate') {
-                  peerRef.current.signal(signal.candidate);
-              } else {
-                  // Offer veya Answer ise olduğu gibi ilet
-                  peerRef.current.signal(signal);
-              }
-          }
-      });
+    socket.on("signal", (data) => {
+        if (peerRef.current) peerRef.current.signal(data.signal);
+    });
 
     return () => {
         socket.off('partner_left_auto_next');
