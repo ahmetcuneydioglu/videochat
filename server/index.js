@@ -76,15 +76,35 @@ const client = new OAuth2Client("18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.ap
 app.post('/api/auth/social-login', async (req, res) => {
   const { token } = req.body;
   try {
-    const ticket = await client.verifyIdToken({ idToken: token, audience: "18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com" });
+    const ticket = await client.verifyIdToken({ 
+      idToken: token, 
+      // DİKKAT: Artık hem Web hem de iOS uygulamanı tanıyacak!
+      audience: [
+        "18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com", // Web (omegpt.com)
+        "18397104529-nkekeeding26dqscnl6tgg8ejanhn5c0.apps.googleusercontent.com"  // iOS (Mobil Uygulama)
+      ] 
+    });
+    
     const payload = ticket.getPayload();
     let user = await User.findOne({ googleId: payload['sub'] });
+    
     if (!user) {
-      user = new User({ googleId: payload['sub'], email: payload['email'], name: payload['name'], avatar: payload['picture'], isRegistered: true });
+      user = new User({ 
+        googleId: payload['sub'], 
+        email: payload['email'], 
+        name: payload['name'], 
+        avatar: payload['picture'], 
+        isRegistered: true 
+      });
       await user.save();
     }
+    
+    // Kullanıcı bilgilerini mobil uygulamaya başarıyla gönderiyoruz
     res.json(user);
+    
   } catch (err) {
+    // Hatayı sunucu loglarında görebilmek için buraya yazdırıyoruz
+    console.error("❌ Google Login Doğrulama Hatası:", err); 
     res.status(500).json({ error: "Giriş başarısız" });
   }
 });
