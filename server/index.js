@@ -194,6 +194,7 @@ socket.on('ice_candidate', ({ candidate, to }) => {
   // --- GÜNCELLENMİŞ EŞLEŞME (MATCH) MANTIĞI ---
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
     const normalizedSelectedCountry = normalizeCountry(selectedCountry || 'all');
+    const normalizedSearchGender = String(searchGender || 'all');
     
     // 1. Kullanıcının kendi ülkesini bul (Karşı tarafın filtresini kontrol etmek için gerekli)
     const u = userDetails.get(socket.id);
@@ -213,28 +214,59 @@ socket.on('ice_candidate', ({ candidate, to }) => {
     globalQueue = globalQueue.filter(item => item.id !== socket.id);
     if (u) { u.status = 'SEARCHING'; u.myGender = myGender; }
 
+    const myHasAnyFilter = normalizedSearchGender !== 'all' || normalizedSelectedCountry !== 'all';
+    const partnerHasAnyFilter = (p) => {
+      const pSearchGender = String(p.searchGender || 'all');
+      const pSelectedCountry = normalizeCountry(p.selectedCountry || 'all');
+      return pSearchGender !== 'all' || pSelectedCountry !== 'all';
+    };
+
+    const getCandidatePriority = (p) => {
+      const pHasAnyFilter = partnerHasAnyFilter(p);
+      const pCountryCode = normalizeCountry(p.countryCode || 'UN');
+      const sameCountry = pCountryCode === myCountryCode;
+
+      // 1) Filtre kullananlar önce filtreli havuzdan eşleşsin.
+      if (myHasAnyFilter) {
+        return pHasAnyFilter ? 0 : 1;
+      }
+
+      // 2) Filtre kullanmayanlar: önce kendi ülkesinden, sonra global.
+      if (!pHasAnyFilter && sameCountry) return 0;
+      if (!pHasAnyFilter) return 1;
+      return 2;
+    };
+
     const tryMatch = () => {
-      const partnerIndex = globalQueue.findIndex(p => {
-        // KENDİYLE EŞLEŞMEYİ ÖNLE
-        if (p.id === socket.id) return false;
+      let bestIndex = -1;
+      let bestPriority = Number.POSITIVE_INFINITY;
 
-        // 1. CİNSİYET KONTROLÜ (İki Yönlü)
-        // Benim aradığım cinsiyet onun cinsiyetine uyuyor mu? VE Onun aradığı cinsiyet benim cinsiyetime uyuyor mu?
-        const genderMatch = 
-          (searchGender === 'all' || searchGender === p.myGender) && 
-          (p.searchGender === 'all' || p.searchGender === myGender);
-        
-        // 2. ÜLKE KONTROLÜ (HAVUZ BAZLI)
-        // İki taraf da aynı ülke havuzunu seçtiyse veya taraflardan biri global ise eşleşebilir.
-        const partnerSelectedCountry = normalizeCountry(p.selectedCountry);
+      globalQueue.forEach((p, idx) => {
+        if (p.id === socket.id) return;
+
+        const pSearchGender = String(p.searchGender || 'all');
+        const pSelectedCountry = normalizeCountry(p.selectedCountry || 'all');
+        const pCountryCode = normalizeCountry(p.countryCode || 'UN');
+
+        const genderMatch =
+          (normalizedSearchGender === 'all' || normalizedSearchGender === p.myGender) &&
+          (pSearchGender === 'all' || pSearchGender === myGender);
+
+        // Filtreli tarafta hedef ülke, karşı tarafın gerçek ülke koduyla kontrol edilir.
         const countryMatch =
-          normalizedSelectedCountry === 'all' ||
-          partnerSelectedCountry === 'all' ||
-          normalizedSelectedCountry === partnerSelectedCountry;
+          (normalizedSelectedCountry === 'all' || normalizedSelectedCountry === pCountryCode) &&
+          (pSelectedCountry === 'all' || pSelectedCountry === myCountryCode);
 
-        // Her iki tarafın da filtreleri birbiriyle %100 uyuşuyorsa eşleş!
-        return genderMatch && countryMatch;
+        if (!genderMatch || !countryMatch) return;
+
+        const priority = getCandidatePriority(p);
+        if (priority < bestPriority) {
+          bestPriority = priority;
+          bestIndex = idx;
+        }
       });
+
+      const partnerIndex = bestIndex;
 
       if (partnerIndex !== -1) {
         const partner = globalQueue[partnerIndex];
@@ -267,7 +299,7 @@ socket.on('ice_candidate', ({ candidate, to }) => {
 
     if (!tryMatch()) {
       // Eşleşme bulunamazsa, kendi ülkesi (countryCode) ve aradığı filtrelerle (selectedCountry) birlikte kuyruğa girer
-      globalQueue.push({ id: socket.id, myGender, searchGender, countryCode: myCountryCode, selectedCountry: normalizedSelectedCountry });
+      globalQueue.push({ id: socket.id, myGender, searchGender: normalizedSearchGender, countryCode: myCountryCode, selectedCountry: normalizedSelectedCountry });
       console.log(`⏳ [${socket.id.slice(0,6)}] Kuyruğa eklendi. Kuyrukta bekleyen: ${globalQueue.length} kişi`);
     }
   });
