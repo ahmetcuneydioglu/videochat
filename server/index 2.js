@@ -76,35 +76,15 @@ const client = new OAuth2Client("18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.ap
 app.post('/api/auth/social-login', async (req, res) => {
   const { token } = req.body;
   try {
-    const ticket = await client.verifyIdToken({ 
-      idToken: token, 
-      // DİKKAT: Artık hem Web hem de iOS uygulamanı tanıyacak!
-      audience: [
-        "18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com", // Web (omegpt.com)
-        "18397104529-nkekeeding26dqscnl6tgg8ejanhn5c0.apps.googleusercontent.com"  // iOS (Mobil Uygulama)
-      ] 
-    });
-    
+    const ticket = await client.verifyIdToken({ idToken: token, audience: "18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com" });
     const payload = ticket.getPayload();
     let user = await User.findOne({ googleId: payload['sub'] });
-    
     if (!user) {
-      user = new User({ 
-        googleId: payload['sub'], 
-        email: payload['email'], 
-        name: payload['name'], 
-        avatar: payload['picture'], 
-        isRegistered: true 
-      });
+      user = new User({ googleId: payload['sub'], email: payload['email'], name: payload['name'], avatar: payload['picture'], isRegistered: true });
       await user.save();
     }
-    
-    // Kullanıcı bilgilerini mobil uygulamaya başarıyla gönderiyoruz
     res.json(user);
-    
   } catch (err) {
-    // Hatayı sunucu loglarında görebilmek için buraya yazdırıyoruz
-    console.error("❌ Google Login Doğrulama Hatası:", err); 
     res.status(500).json({ error: "Giriş başarısız" });
   }
 });
@@ -191,15 +171,9 @@ socket.on('ice_candidate', ({ candidate, to }) => {
 });
 
 
-  // --- GÜNCELLENMİŞ EŞLEŞME (MATCH) MANTIĞI ---
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
     const normalizedSelectedCountry = normalizeCountry(selectedCountry || 'all');
-    
-    // 1. Kullanıcının kendi ülkesini bul (Karşı tarafın filtresini kontrol etmek için gerekli)
-    const u = userDetails.get(socket.id);
-    const myCountryCode = normalizeCountry(u ? u.country : 'UN');
-
-    console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender} - ${myCountryCode} | Aradığı: ${searchGender} - ${normalizedSelectedCountry})`);
+    console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender}, Aradığı: ${searchGender}, Bölge: ${normalizedSelectedCountry})`);
     
     const existingPartner = activeMatches.get(socket.id);
     if (existingPartner) {
@@ -211,32 +185,21 @@ socket.on('ice_candidate', ({ candidate, to }) => {
     }
 
     globalQueue = globalQueue.filter(item => item.id !== socket.id);
+    const u = userDetails.get(socket.id);
     if (u) { u.status = 'SEARCHING'; u.myGender = myGender; }
 
     const tryMatch = () => {
       const partnerIndex = globalQueue.findIndex(p => {
-        // KENDİYLE EŞLEŞMEYİ ÖNLE
-        if (p.id === socket.id) return false;
-
-        // 1. CİNSİYET KONTROLÜ (İki Yönlü)
-        // Benim aradığım cinsiyet onun cinsiyetine uyuyor mu? VE Onun aradığı cinsiyet benim cinsiyetime uyuyor mu?
-        const genderMatch = 
-          (searchGender === 'all' || searchGender === p.myGender) && 
-          (p.searchGender === 'all' || p.searchGender === myGender);
-        
-        // 2. ÜLKE KONTROLÜ (İki Yönlü)
-        // Benim aradığım ülke onun ülkesine uyuyor mu? VE Onun aradığı ülke benim ülkeme uyuyor mu?
-        const countryMatch = 
+        const genderMatch = (searchGender === 'all' || searchGender === p.myGender) && (p.searchGender === 'all' || p.searchGender === myGender);
+        const countryMatch =
           (normalizedSelectedCountry === 'all' || normalizeCountry(p.countryCode) === normalizedSelectedCountry) &&
-          (normalizeCountry(p.selectedCountry) === 'all' || normalizeCountry(p.selectedCountry) === myCountryCode);
-
-        // Her iki tarafın da filtreleri birbiriyle %100 uyuşuyorsa eşleş!
-        return genderMatch && countryMatch;
+          (normalizeCountry(p.selectedCountry) === 'all' || normalizeCountry(p.selectedCountry) === normalizeCountry(countryCode));
+        return genderMatch && countryMatch && p.id !== socket.id;
       });
 
       if (partnerIndex !== -1) {
         const partner = globalQueue[partnerIndex];
-        globalQueue.splice(partnerIndex, 1); // Eşleşeni kuyruktan çıkar
+        globalQueue.splice(partnerIndex, 1);
         
         activeMatches.set(socket.id, partner.id);
         activeMatches.set(partner.id, socket.id);
@@ -249,7 +212,7 @@ socket.on('ice_candidate', ({ candidate, to }) => {
         const matchId = getMatchId(socket.id, partner.id);
         global.liveMatches.set(matchId, {
             id: matchId,
-            user1: { id: socket.id, country: myCountryCode, ip: userIP },
+            user1: { id: socket.id, country: countryCode, ip: userIP },
             user2: { id: partner.id, country: partner.countryCode, ip: pDetails ? pDetails.ip : 'N/A' },
             startTime: new Date()
         });
@@ -257,20 +220,18 @@ socket.on('ice_candidate', ({ candidate, to }) => {
         console.log(`🎉 EŞLEŞME BAŞARILI: [${socket.id.slice(0,6)}] ❤️ [${partner.id.slice(0,6)}]`);
 
         io.to(socket.id).emit('partner_found', { partnerId: partner.id, initiator: true, country: partner.countryCode, partnerGender: partner.myGender, partnerLikes: pDetails ? pDetails.likes : 0 });
-        io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false, country: myCountryCode, partnerGender: myGender, partnerLikes: myDetails ? myDetails.likes : 0 });
+        io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false, country: countryCode, partnerGender: myGender, partnerLikes: myDetails ? myDetails.likes : 0 });
         return true;
       }
       return false;
     };
 
     if (!tryMatch()) {
-      // Eşleşme bulunamazsa, kendi ülkesi (countryCode) ve aradığı filtrelerle (selectedCountry) birlikte kuyruğa girer
-      globalQueue.push({ id: socket.id, myGender, searchGender, countryCode: myCountryCode, selectedCountry: normalizedSelectedCountry });
+      globalQueue.push({ id: socket.id, myGender, searchGender, countryCode: normalizeCountry(countryCode), selectedCountry: normalizedSelectedCountry });
       console.log(`⏳ [${socket.id.slice(0,6)}] Kuyruğa eklendi. Kuyrukta bekleyen: ${globalQueue.length} kişi`);
     }
   });
 
-  
   socket.on('next_user', () => {
   const partnerId = activeMatches.get(socket.id);
   
