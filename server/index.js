@@ -190,6 +190,12 @@ socket.on('ice_candidate', ({ candidate, to }) => {
   io.to(partnerId).emit('ice_candidate', { from: socket.id, candidate });
 });
 
+socket.on('camera_state', ({ to, isOff }) => {
+  const partnerId = getVerifiedPartnerId(socket, to);
+  if (!partnerId) return;
+  io.to(partnerId).emit('camera_state', { from: socket.id, isOff: Boolean(isOff) });
+});
+
 
   // --- GÜNCELLENMİŞ EŞLEŞME (MATCH) MANTIĞI ---
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
