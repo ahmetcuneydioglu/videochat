@@ -224,11 +224,13 @@ socket.on('ice_candidate', ({ candidate, to }) => {
           (searchGender === 'all' || searchGender === p.myGender) && 
           (p.searchGender === 'all' || p.searchGender === myGender);
         
-        // 2. ÜLKE KONTROLÜ (İki Yönlü)
-        // Benim aradığım ülke onun ülkesine uyuyor mu? VE Onun aradığı ülke benim ülkeme uyuyor mu?
-        const countryMatch = 
-          (normalizedSelectedCountry === 'all' || normalizeCountry(p.countryCode) === normalizedSelectedCountry) &&
-          (normalizeCountry(p.selectedCountry) === 'all' || normalizeCountry(p.selectedCountry) === myCountryCode);
+        // 2. ÜLKE KONTROLÜ (HAVUZ BAZLI)
+        // İki taraf da aynı ülke havuzunu seçtiyse veya taraflardan biri global ise eşleşebilir.
+        const partnerSelectedCountry = normalizeCountry(p.selectedCountry);
+        const countryMatch =
+          normalizedSelectedCountry === 'all' ||
+          partnerSelectedCountry === 'all' ||
+          normalizedSelectedCountry === partnerSelectedCountry;
 
         // Her iki tarafın da filtreleri birbiriyle %100 uyuşuyorsa eşleş!
         return genderMatch && countryMatch;
