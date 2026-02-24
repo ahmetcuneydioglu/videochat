@@ -186,8 +186,14 @@ socket.on('ice_candidate', ({ candidate, to }) => {
 });
 
 
+  // --- GÜNCELLENMİŞ EŞLEŞME (MATCH) MANTIĞI ---
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
-    console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender}, Aradığı: ${searchGender}, Bölge: ${selectedCountry})`);
+    
+    // 1. Kullanıcının kendi ülkesini bul (Karşı tarafın filtresini kontrol etmek için gerekli)
+    const u = userDetails.get(socket.id);
+    const myCountryCode = u ? u.country : 'UN';
+
+    console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender} - ${myCountryCode} | Aradığı: ${searchGender} - ${selectedCountry})`);
     
     const existingPartner = activeMatches.get(socket.id);
     if (existingPartner) {
@@ -199,19 +205,32 @@ socket.on('ice_candidate', ({ candidate, to }) => {
     }
 
     globalQueue = globalQueue.filter(item => item.id !== socket.id);
-    const u = userDetails.get(socket.id);
     if (u) { u.status = 'SEARCHING'; u.myGender = myGender; }
 
     const tryMatch = () => {
       const partnerIndex = globalQueue.findIndex(p => {
-        const genderMatch = (searchGender === 'all' || searchGender === p.myGender) && (p.searchGender === 'all' || p.searchGender === myGender);
-        const countryMatch = (selectedCountry === 'all' || selectedCountry === p.countryCode);
-        return genderMatch && countryMatch && p.id !== socket.id;
+        // KENDİYLE EŞLEŞMEYİ ÖNLE
+        if (p.id === socket.id) return false;
+
+        // 1. CİNSİYET KONTROLÜ (İki Yönlü)
+        // Benim aradığım cinsiyet onun cinsiyetine uyuyor mu? VE Onun aradığı cinsiyet benim cinsiyetime uyuyor mu?
+        const genderMatch = 
+          (searchGender === 'all' || searchGender === p.myGender) && 
+          (p.searchGender === 'all' || p.searchGender === myGender);
+        
+        // 2. ÜLKE KONTROLÜ (İki Yönlü)
+        // Benim aradığım ülke onun ülkesine uyuyor mu? VE Onun aradığı ülke benim ülkeme uyuyor mu?
+        const countryMatch = 
+          (selectedCountry === 'all' || selectedCountry === p.countryCode) &&
+          (p.selectedCountry === 'all' || p.selectedCountry === myCountryCode);
+
+        // Her iki tarafın da filtreleri birbiriyle %100 uyuşuyorsa eşleş!
+        return genderMatch && countryMatch;
       });
 
       if (partnerIndex !== -1) {
         const partner = globalQueue[partnerIndex];
-        globalQueue.splice(partnerIndex, 1);
+        globalQueue.splice(partnerIndex, 1); // Eşleşeni kuyruktan çıkar
         
         activeMatches.set(socket.id, partner.id);
         activeMatches.set(partner.id, socket.id);
@@ -224,7 +243,7 @@ socket.on('ice_candidate', ({ candidate, to }) => {
         const matchId = getMatchId(socket.id, partner.id);
         global.liveMatches.set(matchId, {
             id: matchId,
-            user1: { id: socket.id, country: countryCode, ip: userIP },
+            user1: { id: socket.id, country: myCountryCode, ip: userIP },
             user2: { id: partner.id, country: partner.countryCode, ip: pDetails ? pDetails.ip : 'N/A' },
             startTime: new Date()
         });
@@ -232,18 +251,20 @@ socket.on('ice_candidate', ({ candidate, to }) => {
         console.log(`🎉 EŞLEŞME BAŞARILI: [${socket.id.slice(0,6)}] ❤️ [${partner.id.slice(0,6)}]`);
 
         io.to(socket.id).emit('partner_found', { partnerId: partner.id, initiator: true, country: partner.countryCode, partnerGender: partner.myGender, partnerLikes: pDetails ? pDetails.likes : 0 });
-        io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false, country: countryCode, partnerGender: myGender, partnerLikes: myDetails ? myDetails.likes : 0 });
+        io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false, country: myCountryCode, partnerGender: myGender, partnerLikes: myDetails ? myDetails.likes : 0 });
         return true;
       }
       return false;
     };
 
     if (!tryMatch()) {
-      globalQueue.push({ id: socket.id, myGender, searchGender, countryCode, selectedCountry });
+      // Eşleşme bulunamazsa, kendi ülkesi (countryCode) ve aradığı filtrelerle (selectedCountry) birlikte kuyruğa girer
+      globalQueue.push({ id: socket.id, myGender, searchGender, countryCode: myCountryCode, selectedCountry });
       console.log(`⏳ [${socket.id.slice(0,6)}] Kuyruğa eklendi. Kuyrukta bekleyen: ${globalQueue.length} kişi`);
     }
   });
 
+  
   socket.on('next_user', () => {
   const partnerId = activeMatches.get(socket.id);
   
