@@ -81,7 +81,8 @@ app.post('/api/auth/social-login', async (req, res) => {
       // DİKKAT: Artık hem Web hem de iOS uygulamanı tanıyacak!
       audience: [
         "18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com", // Web (omegpt.com)
-        "18397104529-nkekeeding26dqscnl6tgg8ejanhn5c0.apps.googleusercontent.com"  // iOS (Mobil Uygulama)
+        "18397104529-nkekeeding26dqscnl6tgg8ejanhn5c0.apps.googleusercontent.com",  // iOS (Mobil Uygulama)
+        "18397104529-ped0jv9ovoj8mq6c1e3vogl3u6dv27eb.apps.googleusercontent.com"  //İOS NATİVE
       ] 
     });
     
