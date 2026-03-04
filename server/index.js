@@ -65,6 +65,16 @@ const Ban = mongoose.model('Ban', BanSchema);
 const Report = mongoose.model('Report', new mongoose.Schema({ reporterId: String, reportedId: String, reportedIP: String, screenshot: String, date: { type: Date, default: Date.now } }));
 const Log = mongoose.model('Log', new mongoose.Schema({ userId: String, userIP: String, action: String, targetId: String, duration: Number, date: { type: Date, default: Date.now } }));
 
+// --- YENİ EKLENEN: MESAJ ŞEMASI ---
+const MessageSchema = new mongoose.Schema({
+  senderId: String,       // Socket ID veya DB User ID
+  receiverId: String,     // Socket ID veya DB User ID
+  text: String,           // Mesaj İçeriği
+  timestamp: { type: Date, default: Date.now }
+});
+const Message = mongoose.model('Message', MessageSchema);
+// -----------------------------------
+
 let globalQueue = [];
 const activeMatches = new Map();
 const userDetails = new Map();
@@ -358,6 +368,39 @@ socket.on('camera_state', ({ to, isOff }) => {
   socket.on('signal', (data) => {
     io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
   });
+
+  // --- YENİ EKLENEN: SOHBET (CHAT) MANTIĞI ---
+  socket.on('chat_message', async (data) => {
+    const { to, text } = data;
+    const partnerId = getVerifiedPartnerId(socket, to);
+    
+    if (!partnerId || !text) {
+        console.log(`⚠️ Mesaj reddedildi: [${socket.id}] -> [${to || 'Bilinmiyor'}]`);
+        return;
+    }
+
+    try {
+        // 1. Mesajı MongoDB'ye kaydet
+        const newMessage = new Message({
+            senderId: socket.id,
+            receiverId: partnerId,
+            text: text,
+            timestamp: new Date()
+        });
+        await newMessage.save();
+
+        // 2. Mesajı anında karşı tarafa ilet
+        console.log(`💬 Mesaj iletiliyor: [${socket.id}] -> [${partnerId}]`);
+        io.to(partnerId).emit('chat_message', { 
+            senderId: socket.id, 
+            text: text, 
+            timestamp: newMessage.timestamp 
+        });
+    } catch (err) {
+        console.error("❌ Mesaj kaydedilirken hata oluştu:", err);
+    }
+  });
+  // ------------------------------------------
 
   socket.on('disconnect', () => {
     console.log(`❌ Bağlantı Koptu: [${socket.id.slice(0,6)}]`);
