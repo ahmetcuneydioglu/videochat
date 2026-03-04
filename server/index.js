@@ -254,7 +254,7 @@ socket.on('camera_state', ({ to, isOff }) => {
       return 2;
     };
 
-    const tryMatch = () => {
+    const tryMatch = async () => {
       let bestIndex = -1;
       let bestPriority = Number.POSITIVE_INFINITY;
 
@@ -307,14 +307,37 @@ socket.on('camera_state', ({ to, isOff }) => {
 
         console.log(`🎉 EŞLEŞME BAŞARILI: [${socket.id.slice(0,6)}] ❤️ [${partner.id.slice(0,6)}]`);
 
-        io.to(socket.id).emit('partner_found', { partnerId: partner.id, initiator: true, country: partner.countryCode, partnerGender: partner.myGender, partnerLikes: pDetails ? pDetails.likes : 0 });
-        io.to(partner.id).emit('partner_found', { partnerId: socket.id, initiator: false, country: myCountryCode, partnerGender: myGender, partnerLikes: myDetails ? myDetails.likes : 0 });
+        // DÜZELTME BAŞLANGICI: MongoDB'den gerçek isim ve avatar çekimi
+        const myDbUser = myDetails && myDetails.dbId ? await User.findById(myDetails.dbId) : null;
+        const pDbUser = pDetails && pDetails.dbId ? await User.findById(pDetails.dbId) : null;
+
+        io.to(socket.id).emit('partner_found', { 
+            partnerId: partner.id, 
+            initiator: true, 
+            country: partner.countryCode, 
+            partnerGender: partner.myGender, 
+            partnerLikes: pDetails ? pDetails.likes : 0,
+            partnerName: pDbUser ? pDbUser.name : "Stranger",
+            partnerAvatar: pDbUser ? pDbUser.avatar : null
+        });
+
+        io.to(partner.id).emit('partner_found', { 
+            partnerId: socket.id, 
+            initiator: false, 
+            country: myCountryCode, 
+            partnerGender: myGender, 
+            partnerLikes: myDetails ? myDetails.likes : 0,
+            partnerName: myDbUser ? myDbUser.name : "Stranger",
+            partnerAvatar: myDbUser ? myDbUser.avatar : null
+        });
+        // DÜZELTME BİTİŞİ
+
         return true;
       }
       return false;
     };
 
-    if (!tryMatch()) {
+    if (!(await tryMatch())) {
       // Eşleşme bulunamazsa, kendi ülkesi (countryCode) ve aradığı filtrelerle (selectedCountry) birlikte kuyruğa girer
       globalQueue.push({ id: socket.id, myGender, searchGender: normalizedSearchGender, countryCode: myCountryCode, selectedCountry: normalizedSelectedCountry });
       console.log(`⏳ [${socket.id.slice(0,6)}] Kuyruğa eklendi. Kuyrukta bekleyen: ${globalQueue.length} kişi`);
