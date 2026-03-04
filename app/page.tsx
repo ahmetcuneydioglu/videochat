@@ -153,11 +153,11 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // SOCKET EVENTS - isActive dependency'sini kaldırdık, Ref kullanıyoruz
+  // SOCKET EVENTS
   useEffect(() => {
     if (!socket) return;
 
-        // 1. Anlık Banlanma Durumu (Admin panelden butona basılınca)
+        // 1. Anlık Banlanma Durumu
         socket.on('account_banned', (data) => {
             setBanDetails(data);
         });
@@ -178,7 +178,6 @@ export default function Home() {
     });
 
     socket.on("partner_found", (data) => {
-        // Ref kullanarak güncel state kontrolü yapıyoruz, böylece listener kopmuyor
         if (!isActiveRef.current) return;
         
         setMessages([]); 
@@ -203,15 +202,12 @@ export default function Home() {
       });
 
     socket.on("receive_like", (data) => {
-      // 1. Eğer veri 'partner'dan geliyorsa (yani BEN beğenildiysem)
       if (data.isForMe) { 
         setMyTotalLikes(data.newLikes);
       } else {
-        // 2. Eğer ben karşı tarafı beğendiysem ve onun sayısı güncellendiyse
         setPartnerLikes(data.newLikes);
       }
 
-      // Ortak bildirim ve animasyonlar
       if (data.senderSessionLikes) {
         setPartnerSessionLikes(data.senderSessionLikes);
       }
@@ -230,14 +226,21 @@ export default function Home() {
         if (peerRef.current) peerRef.current.signal(data.signal);
     });
 
+    // YENİ EKLENEN: SOCKET.IO MESAJ DİNLEYİCİSİ
+    const handleIncomingMessage = (data: { senderId: string, text: string }) => {
+        setMessages(prev => [...prev, { sender: "Stranger", text: data.text }]);
+    };
+    socket.on("chat_message", handleIncomingMessage);
+
     return () => {
         socket.off('partner_left_auto_next');
         socket.off("partner_found"); 
         socket.off("partner_disconnected"); 
         socket.off("signal"); 
         socket.off("receive_like");
+        socket.off("chat_message", handleIncomingMessage); // Cleanup
     };
-  }, [allCountries]); // isActive buraya EKLENMEMELİ
+  }, [allCountries]); 
 
 
   // Ban Süresi Geri Sayım Sayacı
@@ -251,7 +254,7 @@ export default function Home() {
 
       if (distance < 0) {
         clearInterval(interval);
-        window.location.reload(); // Süre bitti, sayfayı yenile ve içeri al
+        window.location.reload(); 
         return;
       }
 
@@ -273,8 +276,8 @@ export default function Home() {
       const newStream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
             facingMode: mode,
-            width: { ideal: 640 },  // Hız için ideal
-            height: { ideal: 480 }, // Kare değil dikdörtgen daha iyi sıkışır
+            width: { ideal: 640 },  
+            height: { ideal: 480 }, 
             frameRate: { ideal: 30, max: 30 }
           }, 
           audio: true 
@@ -384,7 +387,6 @@ function preferH264(sdp: string) {
                 stream: streamRef.current,
                 config: { 
                     iceServers: [
-                        // Mevcut STUN Sunucuların (IP Adresi Bulur)
                         {
                             urls: "stun:stun.relay.metered.ca:80",
                           },
@@ -427,9 +429,10 @@ function preferH264(sdp: string) {
               if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remStream; 
           });
 
-          peer.on("data", (data) => {
-              setMessages(prev => [...prev, { sender: "Stranger", text: new TextDecoder().decode(data) }]);
-          });
+          // ESKİ DATA DİNLEYİCİSİ İPTAL EDİLDİ: Mesajlar artık socket üzerinden geçecek.
+          // peer.on("data", (data) => {
+          //    setMessages(prev => [...prev, { sender: "Stranger", text: new TextDecoder().decode(data) }]);
+          // });
 
           peer.on("connect", () => {
               console.log("🟢 WebRTC Bağlantısı başarıyla kuruldu! Görüntülü sohbet başladı.");
@@ -437,7 +440,6 @@ function preferH264(sdp: string) {
 
           peer.on("error", (err) => {
               console.error("❌ WebRTC Bağlantı Hatası:", err);
-              // Hata durumunda da temizlik yapıp yeni partnere geçmek iyi bir pratiktir
               cleanUpPeer();
               handleNext();
           });
@@ -449,7 +451,6 @@ function preferH264(sdp: string) {
           if (!isActiveRef.current) return;
           cleanUpPeer();
           setIsSearching(true);
-          // YERLERİ DEĞİŞTİ: Önce eskisini kopar, SONRA aramaya başla
           socket.emit("next_user"); 
           socket.emit("find_partner", { myGender, searchGender, selectedCountry });
   };
@@ -477,7 +478,6 @@ function preferH264(sdp: string) {
     setShowReportModal(true);
   };
 
-  // DÜZELTİLEN FONKSİYON: Raporu Socket ile gönderir
   const sendFinalReport = (targetUser: ReportItem) => {
     if (socket) {
       socket.emit("report_user", {
@@ -504,10 +504,14 @@ function preferH264(sdp: string) {
     }
   };
 
+  // YENİDEN YAZILAN GÖNDERME FONKSİYONU
   const sendMessage = (e: any) => {
     e.preventDefault();
-    if (inputText.trim() && peerRef.current?.connected) {
-      peerRef.current.send(inputText.trim());
+    if (inputText.trim() && partnerId) {
+      // 1. Socket.io üzerinden "chat_message" adıyla ilet
+      socket.emit("chat_message", { to: partnerId, text: inputText.trim() });
+      
+      // 2. Kendi ekranına ekle
       setMessages(prev => [...prev, { sender: "Me", text: inputText.trim() }]);
       setInputText("");
     }
@@ -570,9 +574,6 @@ function preferH264(sdp: string) {
             </div>
           );
         }
-
-        // --- BURADAN SONRA SENİN NORMAL RETURN KODUN GELİYOR ---
-        // if (!isMounted) return null; ...
 
   if (!isMounted) return null;
 
