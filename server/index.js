@@ -209,6 +209,7 @@ socket.on('camera_state', ({ to, isOff }) => {
 
 
   // --- GÜNCELLENMİŞ EŞLEŞME (MATCH) MANTIĞI ---
+ 
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
     const normalizedSelectedCountry = normalizeCountry(selectedCountry || 'all');
     const normalizedSearchGender = String(searchGender || 'all');
@@ -307,9 +308,20 @@ socket.on('camera_state', ({ to, isOff }) => {
 
         console.log(`🎉 EŞLEŞME BAŞARILI: [${socket.id.slice(0,6)}] ❤️ [${partner.id.slice(0,6)}]`);
 
-        // DÜZELTME BAŞLANGICI: MongoDB'den gerçek isim ve avatar çekimi
-        const myDbUser = myDetails && myDetails.dbId ? await User.findById(myDetails.dbId) : null;
-        const pDbUser = pDetails && pDetails.dbId ? await User.findById(pDetails.dbId) : null;
+        // ✅ GÜVENLİ VERİ ÇEKME 
+        let myDbUser = null;
+        let pDbUser = null;
+
+        try {
+            if (myDetails?.dbId && mongoose.Types.ObjectId.isValid(myDetails.dbId)) {
+                myDbUser = await User.findById(myDetails.dbId);
+            }
+            if (pDetails?.dbId && mongoose.Types.ObjectId.isValid(pDetails.dbId)) {
+                pDbUser = await User.findById(pDetails.dbId);
+            }
+        } catch (dbErr) {
+            console.error("⚠️ Veritabanı sorgu hatası (Match):", dbErr.message);
+        }
 
         io.to(socket.id).emit('partner_found', { 
             partnerId: partner.id, 
@@ -330,7 +342,6 @@ socket.on('camera_state', ({ to, isOff }) => {
             partnerName: myDbUser ? myDbUser.name : "Stranger",
             partnerAvatar: myDbUser ? myDbUser.avatar : null
         });
-        // DÜZELTME BİTİŞİ
 
         return true;
       }
