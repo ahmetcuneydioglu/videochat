@@ -213,7 +213,7 @@ io.on('connection', async (socket) => {
     const u = userDetails.get(socket.id);
     if (!u) return;
     
-    const myCountryCode = normalizeCountry(u.country : 'UN');
+    const myCountryCode = normalizeCountry(u.country ? u.country : 'UN');
 
     // --- GEM ÜCRET HESAPLAMA VE KONTROLÜ ---
     let totalCost = 0;
