@@ -19,6 +19,9 @@ export default function AdminDashboard() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [userHistory, setUserHistory] = useState<any[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  
+  // YENİ EKLENEN: Düzenleme Modalı State'i
+  const [editUserModal, setEditUserModal] = useState<any>(null);
 
   // admin user stateleri
   const [view, setView] = useState<"live" | "users">("live"); 
@@ -78,6 +81,39 @@ export default function AdminDashboard() {
     }
   };
 
+  // YENİ EKLENEN: Kullanıcı Güncelleme Fonksiyonu
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if(!editUserModal) return;
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/admin/update-user`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          userId: editUserModal._id, 
+          updateData: {
+            gems: parseInt(editUserModal.gems) || 0,
+            trustScore: parseInt(editUserModal.trustScore) || 0,
+            role: editUserModal.role,
+            status: editUserModal.status
+          } 
+        })
+      });
+
+      if (res.ok) {
+        alert("Kullanıcı başarıyla güncellendi!");
+        setEditUserModal(null);
+        fetchAllUsers(); // Listeyi yenile
+      } else {
+        alert("Güncelleme başarısız oldu.");
+      }
+    } catch (err) {
+      console.error("Güncelleme hatası:", err);
+      alert("Sistemsel bir hata oluştu.");
+    }
+  };
+
   // Eşleşmeyi Zorla Bitir
   const killMatch = async (matchId: string, user1Id: string, user2Id: string) => {
     if(!confirm("Bu eşleşmeyi sonlandırmak istediğine emin misin?")) return;
@@ -93,7 +129,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // YENİ EKLENEN: Sebepli Ban Fonksiyonu
+  // Sebepli Ban Fonksiyonu
   const banByIP = async (ip: string, id?: string) => {
     const reason = prompt(`${ip} adresi 24 saat yasaklanacak.\nLütfen bir sebep girin:`, "Kurallara aykırı davranış");
     if (reason === null) return; 
@@ -176,8 +212,9 @@ export default function AdminDashboard() {
   }
 
   // --- ANA DASHBOARD ---
+  // SCROLL SORUNU İÇİN DÜZELTME: overflow-y-auto eklendi
   return (
-    <div className="min-h-screen bg-black text-white p-6 font-sans selection:bg-blue-500/30">
+    <div className="min-h-screen bg-black text-white p-6 font-sans selection:bg-blue-500/30 overflow-y-auto">
       
       {/* Üst İstatistik Paneli */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 max-w-[1600px] mx-auto">
@@ -442,6 +479,7 @@ export default function AdminDashboard() {
               <thead>
                 <tr className="text-[10px] font-black uppercase text-zinc-600 tracking-[0.2em]">
                   <th className="px-6 pb-2">Kullanıcı</th>
+                  <th className="px-6 pb-2">Gem Bakiye</th>
                   <th className="px-6 pb-2">Güven Skoru</th>
                   <th className="px-6 pb-2">Rol</th>
                   <th className="px-6 pb-2">Kayıt Tarihi</th>
@@ -453,7 +491,6 @@ export default function AdminDashboard() {
                   u.name?.toLowerCase().includes(userSearch.toLowerCase()) || 
                   u.email?.toLowerCase().includes(userSearch.toLowerCase())
                 ).map(user => (
-                  // admin/page.tsx içindeki <tr> etiketini güncelle
                   <tr key={user._id} className={`transition-colors group ${user.trustScore < 40 ? 'bg-red-900/10' : 'bg-black/20 hover:bg-black/40'}`}>
                     <td className="px-6 py-4 rounded-l-3xl border-y border-l border-zinc-800/50">
                       <div className="flex items-center gap-4">
@@ -467,6 +504,12 @@ export default function AdminDashboard() {
                           <p className="text-[10px] text-zinc-500 font-mono">{user.email || "Email Yok"}</p>
                         </div>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 border-y border-zinc-800/50">
+                      <span className="text-yellow-500 font-black flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l9 7-9 13L3 9l9-7z"/></svg>
+                        {user.gems || 0}
+                      </span>
                     </td>
                     <td className="px-6 py-4 border-y border-zinc-800/50">
                       <div className="flex items-center gap-2">
@@ -485,17 +528,9 @@ export default function AdminDashboard() {
                       {new Date(user.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 rounded-r-3xl border-y border-r border-zinc-800/50 text-right">
+                      {/* DÜZENLENEN KISIM: Ayarlar Modalı Tetikleyici */}
                       <button 
-                        onClick={() => {
-                          const newScore = prompt(`${user.name} için yeni güven skoru (0-100):`, user.trustScore || 100);
-                          if(newScore !== null) {
-                            fetch(`${BACKEND_URL}/api/admin/update-user`, {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ userId: user._id, updateData: { trustScore: parseInt(newScore) } })
-                            }).then(fetchAllUsers);
-                          }
-                        }}
+                        onClick={() => setEditUserModal(user)}
                         className="p-2 bg-zinc-800 hover:bg-blue-600 rounded-xl transition-all text-white"
                         title="Düzenle"
                       >
@@ -506,6 +541,103 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* --- YENİ EKLENEN: PROFİL DÜZENLEME MODALI --- */}
+      {editUserModal && (
+        <div className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
+          <div className="bg-zinc-950 border border-zinc-800/80 p-8 rounded-[40px] w-full max-w-md shadow-2xl relative overflow-hidden">
+            {/* Arka plan ışık efekti */}
+            <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-600/20 blur-[50px] rounded-full"></div>
+
+            <div className="relative z-10">
+              <div className="flex items-center gap-5 mb-8">
+                <img 
+                  src={editUserModal.avatar} 
+                  className="w-16 h-16 rounded-full border-2 border-zinc-800 object-cover" 
+                  onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${editUserModal.name}&background=random`)}
+                />
+                <div>
+                  <h2 className="text-xl font-black uppercase text-white tracking-tighter">{editUserModal.name || "İsimsiz"}</h2>
+                  <p className="text-[10px] text-zinc-500 font-mono mt-1">ID: {editUserModal._id}</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleUpdateUser} className="space-y-5">
+                {/* Gems Ayarı */}
+                <div className="bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800/50">
+                  <label className="text-[9px] font-black uppercase text-zinc-500 block mb-2 tracking-widest">Bakiye (Gems)</label>
+                  <div className="flex items-center gap-3">
+                    <span className="text-yellow-500"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l9 7-9 13L3 9l9-7z"/></svg></span>
+                    <input 
+                      type="number" 
+                      value={editUserModal.gems || 0} 
+                      onChange={(e) => setEditUserModal({...editUserModal, gems: e.target.value})}
+                      className="w-full bg-transparent text-white font-black text-xl outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Güven Skoru */}
+                <div className="bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800/50">
+                  <label className="text-[9px] font-black uppercase text-zinc-500 block mb-2 tracking-widest">Güven Skoru (0-100)</label>
+                  <input 
+                    type="number" 
+                    min="0" max="100"
+                    value={editUserModal.trustScore || 100} 
+                    onChange={(e) => setEditUserModal({...editUserModal, trustScore: e.target.value})}
+                    className="w-full bg-transparent text-blue-400 font-black text-xl outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Rol Ayarı */}
+                  <div className="bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800/50">
+                    <label className="text-[9px] font-black uppercase text-zinc-500 block mb-2 tracking-widest">Rol</label>
+                    <select 
+                      value={editUserModal.role || 'user'} 
+                      onChange={(e) => setEditUserModal({...editUserModal, role: e.target.value})}
+                      className="w-full bg-transparent text-white text-xs uppercase font-bold outline-none cursor-pointer"
+                    >
+                      <option className="bg-zinc-900" value="user">User</option>
+                      <option className="bg-zinc-900" value="vip">VIP</option>
+                      <option className="bg-zinc-900" value="admin">Admin</option>
+                    </select>
+                  </div>
+
+                  {/* Durum Ayarı */}
+                  <div className="bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800/50">
+                    <label className="text-[9px] font-black uppercase text-zinc-500 block mb-2 tracking-widest">Durum</label>
+                    <select 
+                      value={editUserModal.status || 'active'} 
+                      onChange={(e) => setEditUserModal({...editUserModal, status: e.target.value})}
+                      className="w-full bg-transparent text-white text-xs uppercase font-bold outline-none cursor-pointer"
+                    >
+                      <option className="bg-zinc-900" value="active">Aktif</option>
+                      <option className="bg-zinc-900 text-red-500" value="shadow_banned">Banlı</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    type="button" 
+                    onClick={() => setEditUserModal(null)} 
+                    className="flex-1 bg-zinc-800/50 hover:bg-zinc-800 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-colors"
+                  >
+                    Vazgeç
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-colors shadow-lg shadow-blue-500/20"
+                  >
+                    Güncelle
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
