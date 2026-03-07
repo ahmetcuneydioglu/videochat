@@ -50,7 +50,7 @@ const UserSchema = new mongoose.Schema({
   lastSeen: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now },
   // YENİ EKLENEN: TAŞ VE ÖDÜL SİSTEMİ ALANLARI
-  gems: { type: Number, default: 0 }, 
+  gems: { type: Number, default: 25 }, 
   dailyStreak: { type: Number, default: 0 }, 
   lastLoginDate: { type: Date }, 
   lastClaimedDate: { type: Date } 
@@ -211,7 +211,45 @@ io.on('connection', async (socket) => {
     const normalizedSearchGender = String(searchGender || 'all');
     
     const u = userDetails.get(socket.id);
-    const myCountryCode = normalizeCountry(u ? u.country : 'UN');
+    if (!u) return;
+    
+    const myCountryCode = normalizeCountry(u.country : 'UN');
+
+    // --- GEM ÜCRET HESAPLAMA VE KONTROLÜ ---
+    let totalCost = 0;
+    if (normalizedSearchGender === 'female') totalCost += 8; // Sadece kadın seçimi 8 Gem
+    if (normalizedSelectedCountry !== 'all') totalCost += 4; // Ülke seçimi 4 Gem
+
+    if (totalCost > 0) {
+        if (!u.dbId) {
+            return socket.emit('error_message', { 
+                type: 'AUTH_REQUIRED', 
+                message: 'Filtre kullanmak için giriş yapmalısın!' 
+            });
+        }
+
+        try {
+            const dbUser = await User.findById(u.dbId);
+            if (!dbUser || dbUser.gems < totalCost) {
+                return socket.emit('error_message', { 
+                    type: 'INSUFFICIENT_GEMS', 
+                    message: `Yetersiz bakiye! Bu eşleşme için ${totalCost} Gem gerekiyor.` 
+                });
+            }
+
+            // Ücreti tahsil et
+            dbUser.gems -= totalCost;
+            await dbUser.save();
+            
+            // Frontend bakiyesini güncelle
+            socket.emit('update_my_likes', { gems: dbUser.gems }); // Veya özel bir update_gems eventi
+            console.log(`💎 [${socket.id.slice(0,6)}] ${totalCost} Gem harcadı. Kalan: ${dbUser.gems}`);
+        } catch (err) {
+            console.error("❌ Gem işlem hatası:", err);
+            return;
+        }
+    }
+    // ---------------------------------------
 
     console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender} - ${myCountryCode} | Aradığı: ${searchGender} - ${normalizedSelectedCountry})`);
     
@@ -225,7 +263,8 @@ io.on('connection', async (socket) => {
     }
 
     globalQueue = globalQueue.filter(item => item.id !== socket.id);
-    if (u) { u.status = 'SEARCHING'; u.myGender = myGender; }
+    u.status = 'SEARCHING'; 
+    u.myGender = myGender;
 
     const myHasAnyFilter = normalizedSearchGender !== 'all' || normalizedSelectedCountry !== 'all';
     const partnerHasAnyFilter = (p) => {
@@ -293,7 +332,7 @@ io.on('connection', async (socket) => {
         const matchId = getMatchId(socket.id, partner.id);
         global.liveMatches.set(matchId, {
             id: matchId,
-            user1: { id: socket.id, country: myCountryCode, ip: userIP },
+            user1: { id: socket.id, country: myCountryCode, ip: u.ip },
             user2: { id: partner.id, country: partner.countryCode, ip: pDetails ? pDetails.ip : 'N/A' },
             startTime: new Date()
         });
@@ -321,7 +360,8 @@ io.on('connection', async (socket) => {
             partnerGender: partner.myGender, 
             partnerLikes: pDetails ? pDetails.likes : 0,
             partnerName: pDbUser ? pDbUser.name : "Stranger",
-            partnerAvatar: pDbUser ? pDbUser.avatar : null
+            partnerAvatar: pDbUser ? pDbUser.avatar : null,
+            myNewGems: myDbUser ? myDbUser.gems : 0 // Bakiyeyi eşleşme anında da gönderelim
         });
 
         io.to(partner.id).emit('partner_found', { 
@@ -343,7 +383,7 @@ io.on('connection', async (socket) => {
       globalQueue.push({ id: socket.id, myGender, searchGender: normalizedSearchGender, countryCode: myCountryCode, selectedCountry: normalizedSelectedCountry });
       console.log(`⏳ [${socket.id.slice(0,6)}] Kuyruğa eklendi. Kuyrukta bekleyen: ${globalQueue.length} kişi`);
     }
-  });
+});
 
   socket.on('next_user', () => {
     const partnerId = activeMatches.get(socket.id);
