@@ -595,6 +595,56 @@ app.post('/api/store/claim', async (req, res) => {
     res.status(500).json({error: "Sunucu hatası"});
   }
 });
+
+
+// 1. Ürün ve Taş miktarlarını tanımla
+const GEM_PACKAGES = {
+  "com.omegpt.gem120": 120,
+  "com.omegpt.gem400": 400,
+  "com.omegpt.gem820": 820,
+  "com.omegpt.gem1700": 1700,
+  "com.omegpt.gem4500": 4500,
+  "com.omegpt.gem10000": 10000
+};
+
+// 2. Satın Alma Doğrulama API'sı
+app.post('/api/store/verify-purchase', async (req, res) => {
+  const { dbUserId, productId, transactionId } = req.body;
+
+  console.log(`🛒 Satın Alma Talebi: User:${dbUserId}, Product:${productId}`);
+
+  try {
+    // Ürün ID'sini kontrol et
+    const gemAmount = GEM_PACKAGES[productId];
+    if (!gemAmount) {
+      return res.status(400).json({ error: "Geçersiz Product ID!" });
+    }
+
+    // Kullanıcıyı bul ve taşlarını güncelle
+    const user = await User.findById(dbUserId);
+    if (!user) {
+      return res.status(404).json({ error: "Kullanıcı veritabanında bulunamadı." });
+    }
+
+    // Mevcut taşlarına yenisini ekle
+    user.gems = (user.gems || 0) + gemAmount;
+    await user.save();
+
+    console.log(`✅ Başarılı: ${user.name} kullanıcısına ${gemAmount} taş eklendi.`);
+
+    res.json({ 
+      success: true, 
+      newBalance: user.gems,
+      message: `${gemAmount} taş hesabınıza tanımlandı.`
+    });
+
+  } catch (err) {
+    console.error("Store Hatası:", err);
+    res.status(500).json({ error: "İşlem sırasında sunucu hatası oluştu." });
+  }
+});
+
+
 // --------------------------------------------------
 
 // --- ADMIN API ---
