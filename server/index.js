@@ -205,192 +205,196 @@ io.on('connection', async (socket) => {
     io.to(partnerId).emit('camera_state', { from: socket.id, isOff: Boolean(isOff) });
   });
 
-  // --- EŞLEŞME (MATCH) MANTIĞI ---
-socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
-    
-    const normalizedSelectedCountry = normalizeCountry(selectedCountry || 'all');
-    const normalizedSearchGender = String(searchGender || 'all');
-    
-    const u = userDetails.get(socket.id);
-    if (!u) return;
+  // --- EŞLEŞME (MATCH) MANTIĞI DÜZELTİLDİ ---
+  socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
+      
+      const normalizedSelectedCountry = normalizeCountry(selectedCountry || 'all');
+      const normalizedSearchGender = String(searchGender || 'all');
+      
+      const u = userDetails.get(socket.id);
+      if (!u) return;
 
-    // --- KRİTİK DÜZELTME: Geçerli bir MongoDB ObjectId mi kontrol fonksiyonu ---
-    const isValidId = (id) => id && id !== "null" && id !== "undefined" && mongoose.Types.ObjectId.isValid(id);
-    
-    const myCountryCode = normalizeCountry(u.country ? u.country : 'UN');
+      // GEÇERLİ ID KONTROL FONKSİYONU
+      const isValidId = (id) => id && id !== "null" && id !== "undefined" && mongoose.Types.ObjectId.isValid(id);
+      
+      const myCountryCode = normalizeCountry(u.country ? u.country : 'UN');
 
-    // --- 1. ADIM: SADECE ÖN KONTROL (Tahsilat Yapma) ---
-    let totalCost = 0;
-    if (normalizedSearchGender === 'female') totalCost += 8;
-    if (normalizedSelectedCountry !== 'all') totalCost += 4;
+      // --- 1. ADIM: SADECE ÖN KONTROL (Tahsilat Yapma) ---
+      let totalCost = 0;
+      if (normalizedSearchGender === 'female') totalCost += 8;
+      if (normalizedSelectedCountry !== 'all') totalCost += 4;
 
-    if (totalCost > 0) {
-        // Eğer kullanıcı filtre kullanıyorsa ama geçerli bir giriş yapmamışsa engelle
-        if (!isValidId(u.dbId)) {
-            return socket.emit('error_message', { 
-                type: 'AUTH_REQUIRED', 
-                message: 'Filtre kullanmak için giriş yapmalısın!' 
-            });
-        }
+      if (totalCost > 0) {
+          if (!isValidId(u.dbId)) {
+              return socket.emit('error_message', { 
+                  type: 'AUTH_REQUIRED', 
+                  message: 'Filtre kullanmak için giriş yapmalısın!' 
+              });
+          }
 
-        try {
-            const dbUser = await User.findById(u.dbId);
-            if (!dbUser || dbUser.gems < totalCost) {
-                return socket.emit('error_message', { 
-                    type: 'INSUFFICIENT_GEMS', 
-                    message: `Yetersiz bakiye! Bu eşleşme için ${totalCost} Gem gerekiyor.` 
-                });
-            }
-            // Not: Burada henüz gems düşmüyoruz, sadece varlığını onayladık.
-        } catch (err) {
-            console.error("❌ Bakiye kontrol hatası:", err);
-            return;
-        }
-    }
+          try {
+              const dbUser = await User.findById(u.dbId);
+              if (!dbUser || dbUser.gems < totalCost) {
+                  return socket.emit('error_message', { 
+                      type: 'INSUFFICIENT_GEMS', 
+                      message: `Yetersiz bakiye! Bu eşleşme için ${totalCost} Gem gerekiyor.` 
+                  });
+              }
+          } catch (err) {
+              console.error("❌ Bakiye kontrol hatası:", err);
+              return;
+          }
+      }
 
-    console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender} | Filtre: ${normalizedSearchGender} - ${normalizedSelectedCountry})`);
-    
-    const existingPartner = activeMatches.get(socket.id);
-    if (existingPartner) {
-        io.to(existingPartner).emit('partner_left_auto_next');
-        activeMatches.delete(socket.id);
-        activeMatches.delete(existingPartner);
-        if (global.liveMatches) global.liveMatches.delete(getMatchId(socket.id, existingPartner));
-    }
+      console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender} | Filtre: ${normalizedSearchGender} - ${normalizedSelectedCountry})`);
+      
+      const existingPartner = activeMatches.get(socket.id);
+      if (existingPartner) {
+          io.to(existingPartner).emit('partner_left_auto_next');
+          activeMatches.delete(socket.id);
+          activeMatches.delete(existingPartner);
+          if (global.liveMatches) global.liveMatches.delete(getMatchId(socket.id, existingPartner));
+      }
 
-    globalQueue = globalQueue.filter(item => item.id !== socket.id);
-    u.status = 'SEARCHING'; 
-    u.myGender = myGender;
-    // Filtre tercihlerini socket objesine geçici olarak kaydedelim ki tryMatch içinde kullanalım
-    u.searchGender = normalizedSearchGender;
-    u.selectedCountry = normalizedSelectedCountry;
+      globalQueue = globalQueue.filter(item => item.id !== socket.id);
+      u.status = 'SEARCHING'; 
+      u.myGender = myGender;
+      u.searchGender = normalizedSearchGender;
+      u.selectedCountry = normalizedSelectedCountry;
 
-    const myHasAnyFilter = normalizedSearchGender !== 'all' || normalizedSelectedCountry !== 'all';
-    
-    const partnerHasAnyFilter = (p) => {
-      const pSearchGender = String(p.searchGender || 'all');
-      const pSelectedCountry = normalizeCountry(p.selectedCountry || 'all');
-      return pSearchGender !== 'all' || pSelectedCountry !== 'all';
-    };
-
-    const getCandidatePriority = (p) => {
-      const pHasAnyFilter = partnerHasAnyFilter(p);
-      const pCountryCode = normalizeCountry(p.countryCode || 'UN');
-      const sameCountry = pCountryCode === myCountryCode;
-      if (myHasAnyFilter) return pHasAnyFilter ? 0 : 1;
-      if (!pHasAnyFilter && sameCountry) return 0;
-      if (!pHasAnyFilter) return 1;
-      return 2;
-    };
-
-    const tryMatch = async () => {
-      let bestIndex = -1;
-      let bestPriority = Number.POSITIVE_INFINITY;
-
-      globalQueue.forEach((p, idx) => {
-        if (p.id === socket.id) return;
-
+      const myHasAnyFilter = normalizedSearchGender !== 'all' || normalizedSelectedCountry !== 'all';
+      
+      const partnerHasAnyFilter = (p) => {
         const pSearchGender = String(p.searchGender || 'all');
         const pSelectedCountry = normalizeCountry(p.selectedCountry || 'all');
+        return pSearchGender !== 'all' || pSelectedCountry !== 'all';
+      };
+
+      const getCandidatePriority = (p) => {
+        const pHasAnyFilter = partnerHasAnyFilter(p);
         const pCountryCode = normalizeCountry(p.countryCode || 'UN');
+        const sameCountry = pCountryCode === myCountryCode;
+        if (myHasAnyFilter) return pHasAnyFilter ? 0 : 1;
+        if (!pHasAnyFilter && sameCountry) return 0;
+        if (!pHasAnyFilter) return 1;
+        return 2;
+      };
 
-        const genderMatch =
-          (normalizedSearchGender === 'all' || normalizedSearchGender === p.myGender) &&
-          (pSearchGender === 'all' || pSearchGender === myGender);
+      const tryMatch = async () => {
+        let bestIndex = -1;
+        let bestPriority = Number.POSITIVE_INFINITY;
 
-        const countryMatch =
-          (normalizedSelectedCountry === 'all' || normalizedSelectedCountry === pCountryCode) &&
-          (pSelectedCountry === 'all' || pSelectedCountry === myCountryCode);
+        globalQueue.forEach((p, idx) => {
+          if (p.id === socket.id) return;
 
-        if (!genderMatch || !countryMatch) return;
+          const pSearchGender = String(p.searchGender || 'all');
+          const pSelectedCountry = normalizeCountry(p.selectedCountry || 'all');
+          const pCountryCode = normalizeCountry(p.countryCode || 'UN');
 
-        const priority = getCandidatePriority(p);
-        if (priority < bestPriority) {
-          bestPriority = priority;
-          bestIndex = idx;
+          const genderMatch =
+            (normalizedSearchGender === 'all' || normalizedSearchGender === p.myGender) &&
+            (pSearchGender === 'all' || pSearchGender === myGender);
+
+          const countryMatch =
+            (normalizedSelectedCountry === 'all' || normalizedSelectedCountry === pCountryCode) &&
+            (pSelectedCountry === 'all' || pSelectedCountry === myCountryCode);
+
+          if (!genderMatch || !countryMatch) return;
+
+          const priority = getCandidatePriority(p);
+          if (priority < bestPriority) {
+            bestPriority = priority;
+            bestIndex = idx;
+          }
+        });
+
+        if (bestIndex !== -1) {
+          const partner = globalQueue[bestIndex];
+          
+          // --- YARDIMCI FONKSİYON: Kullanıcıdan Gem Tahsil Et ---
+          const chargeGems = async (userId, cost, userSocketId) => {
+              if (cost > 0 && isValidId(userId)) {
+                  try {
+                      const dbUser = await User.findById(userId);
+                      if (dbUser && dbUser.gems >= cost) {
+                          dbUser.gems -= cost;
+                          await dbUser.save();
+                          io.to(userSocketId).emit('update_my_likes', { gems: dbUser.gems });
+                          console.log(`💎 [${userSocketId.slice(0,6)}] ${cost} Gem tahsil edildi. Kalan: ${dbUser.gems}`);
+                      }
+                  } catch (err) {
+                      console.error("❌ Tahsilat hatası:", err);
+                  }
+              }
+          };
+
+          // --- 2. ADIM: GERÇEK TAHSİLAT NOKTASI (Eşleşme Kesinleşti) ---
+          // Arayan ve bulunan kişiden (eğer filtreleri varsa) tahsilat yap
+          await chargeGems(u.dbId, totalCost, socket.id);
+          await chargeGems(partner.dbId, partner.totalCost || 0, partner.id);
+
+          globalQueue.splice(bestIndex, 1);
+          
+          activeMatches.set(socket.id, partner.id);
+          activeMatches.set(partner.id, socket.id);
+          
+          const myDetails = userDetails.get(socket.id);
+          const pDetails = userDetails.get(partner.id);
+          if (myDetails) myDetails.status = 'BUSY';
+          if (pDetails) pDetails.status = 'BUSY';
+
+          const matchId = getMatchId(socket.id, partner.id);
+          global.liveMatches.set(matchId, {
+              id: matchId,
+              user1: { id: socket.id, country: myCountryCode, ip: u.ip },
+              user2: { id: partner.id, country: partner.countryCode, ip: pDetails ? pDetails.ip : 'N/A' },
+              startTime: new Date()
+          });
+
+          let myDbUser = isValidId(u.dbId) ? await User.findById(u.dbId) : null;
+          let pDbUser = isValidId(partner.dbId) ? await User.findById(partner.dbId) : null;
+
+          io.to(socket.id).emit('partner_found', { 
+              partnerId: partner.id, 
+              initiator: true, 
+              country: partner.countryCode, 
+              partnerGender: partner.myGender, 
+              partnerLikes: pDetails ? pDetails.likes : 0,
+              partnerName: pDbUser ? pDbUser.name : "Stranger",
+              partnerAvatar: pDbUser ? pDbUser.avatar : null,
+              myNewGems: myDbUser ? myDbUser.gems : 0
+          });
+
+          io.to(partner.id).emit('partner_found', { 
+              partnerId: socket.id, 
+              initiator: false, 
+              country: myCountryCode, 
+              partnerGender: myGender, 
+              partnerLikes: myDetails ? myDetails.likes : 0,
+              partnerName: myDbUser ? myDbUser.name : "Stranger",
+              partnerAvatar: myDbUser ? myDbUser.avatar : null,
+              myNewGems: pDbUser ? pDbUser.gems : 0 
+          });
+
+          return true;
         }
-      });
+        return false;
+      };
 
-      if (bestIndex !== -1) {
-        // --- 2. ADIM: GERÇEK TAHSİLAT NOKTASI (Eşleşme Kesinleşti) ---
-        if (totalCost > 0 && isValidId(u.dbId)) {
-            try {
-                const dbUser = await User.findById(u.dbId);
-                if (dbUser && dbUser.gems >= totalCost) {
-                    dbUser.gems -= totalCost;
-                    await dbUser.save();
-                    socket.emit('update_my_likes', { gems: dbUser.gems });
-                    console.log(`💎 [${socket.id.slice(0,6)}] Eşleşme sağlandı, ${totalCost} Gem tahsil edildi.`);
-                } else {
-                    // Nadir durum: Arama sırasında bakiye biterse eşleşmeyi iptal et
-                    return false;
-                }
-            } catch (err) {
-                console.error("❌ Tahsilat hatası:", err);
-                return false;
-            }
-        }
-
-        const partner = globalQueue[bestIndex];
-        globalQueue.splice(bestIndex, 1);
-        
-        activeMatches.set(socket.id, partner.id);
-        activeMatches.set(partner.id, socket.id);
-        
-        const myDetails = userDetails.get(socket.id);
-        const pDetails = userDetails.get(partner.id);
-        if (myDetails) myDetails.status = 'BUSY';
-        if (pDetails) pDetails.status = 'BUSY';
-
-        const matchId = getMatchId(socket.id, partner.id);
-        global.liveMatches.set(matchId, {
-            id: matchId,
-            user1: { id: socket.id, country: myCountryCode, ip: u.ip },
-            user2: { id: partner.id, country: partner.countryCode, ip: pDetails ? pDetails.ip : 'N/A' },
-            startTime: new Date()
+      if (!(await tryMatch())) {
+        // Kuyruğa eklerken kimin ne kadar borcu olduğunu kaydet
+        globalQueue.push({ 
+          id: socket.id, 
+          myGender, 
+          searchGender: normalizedSearchGender, 
+          countryCode: myCountryCode, 
+          selectedCountry: normalizedSelectedCountry,
+          dbId: u.dbId,       
+          totalCost: totalCost 
         });
-
-        // Hata fırlatmaması için DB sorgularını da güvenli hale getirdik
-        let myDbUser = isValidId(u.dbId) ? await User.findById(u.dbId) : null;
-        let pDbUser = isValidId(pDetails?.dbId) ? await User.findById(pDetails.dbId) : null;
-
-        io.to(socket.id).emit('partner_found', { 
-            partnerId: partner.id, 
-            initiator: true, 
-            country: partner.countryCode, 
-            partnerGender: partner.myGender, 
-            partnerLikes: pDetails ? pDetails.likes : 0,
-            partnerName: pDbUser ? pDbUser.name : "Stranger",
-            partnerAvatar: pDbUser ? pDbUser.avatar : null,
-            myNewGems: myDbUser ? myDbUser.gems : 0
-        });
-
-        io.to(partner.id).emit('partner_found', { 
-            partnerId: socket.id, 
-            initiator: false, 
-            country: myCountryCode, 
-            partnerGender: myGender, 
-            partnerLikes: myDetails ? myDetails.likes : 0,
-            partnerName: myDbUser ? myDbUser.name : "Stranger",
-            partnerAvatar: myDbUser ? myDbUser.avatar : null
-        });
-
-        return true;
+        console.log(`⏳ [${socket.id.slice(0,6)}] Kuyruğa eklendi. (Gems henüz düşülmedi)`);
       }
-      return false;
-    };
-
-    if (!(await tryMatch())) {
-      globalQueue.push({ 
-        id: socket.id, 
-        myGender, 
-        searchGender: normalizedSearchGender, 
-        countryCode: myCountryCode, 
-        selectedCountry: normalizedSelectedCountry 
-      });
-      console.log(`⏳ [${socket.id.slice(0,6)}] Kuyruğa eklendi. (Gems henüz düşülmedi)`);
-    }
-});
+  });
 
   socket.on('next_user', () => {
     const partnerId = activeMatches.get(socket.id);
