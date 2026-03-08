@@ -206,12 +206,16 @@ io.on('connection', async (socket) => {
   });
 
   // --- EŞLEŞME (MATCH) MANTIĞI ---
-  socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
+socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
+    
     const normalizedSelectedCountry = normalizeCountry(selectedCountry || 'all');
     const normalizedSearchGender = String(searchGender || 'all');
     
     const u = userDetails.get(socket.id);
     if (!u) return;
+
+    // --- KRİTİK DÜZELTME: Geçerli bir MongoDB ObjectId mi kontrol fonksiyonu ---
+    const isValidId = (id) => id && id !== "null" && id !== "undefined" && mongoose.Types.ObjectId.isValid(id);
     
     const myCountryCode = normalizeCountry(u.country ? u.country : 'UN');
 
@@ -221,7 +225,8 @@ io.on('connection', async (socket) => {
     if (normalizedSelectedCountry !== 'all') totalCost += 4;
 
     if (totalCost > 0) {
-        if (!u.dbId) {
+        // Eğer kullanıcı filtre kullanıyorsa ama geçerli bir giriş yapmamışsa engelle
+        if (!isValidId(u.dbId)) {
             return socket.emit('error_message', { 
                 type: 'AUTH_REQUIRED', 
                 message: 'Filtre kullanmak için giriş yapmalısın!' 
@@ -308,7 +313,7 @@ io.on('connection', async (socket) => {
 
       if (bestIndex !== -1) {
         // --- 2. ADIM: GERÇEK TAHSİLAT NOKTASI (Eşleşme Kesinleşti) ---
-        if (totalCost > 0 && u.dbId) {
+        if (totalCost > 0 && isValidId(u.dbId)) {
             try {
                 const dbUser = await User.findById(u.dbId);
                 if (dbUser && dbUser.gems >= totalCost) {
@@ -345,8 +350,9 @@ io.on('connection', async (socket) => {
             startTime: new Date()
         });
 
-        let myDbUser = await User.findById(u.dbId);
-        let pDbUser = pDetails?.dbId ? await User.findById(pDetails.dbId) : null;
+        // Hata fırlatmaması için DB sorgularını da güvenli hale getirdik
+        let myDbUser = isValidId(u.dbId) ? await User.findById(u.dbId) : null;
+        let pDbUser = isValidId(pDetails?.dbId) ? await User.findById(pDetails.dbId) : null;
 
         io.to(socket.id).emit('partner_found', { 
             partnerId: partner.id, 
