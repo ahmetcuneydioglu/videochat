@@ -215,10 +215,10 @@ io.on('connection', async (socket) => {
     
     const myCountryCode = normalizeCountry(u.country ? u.country : 'UN');
 
-    // --- GEM ÜCRET HESAPLAMA VE KONTROLÜ ---
+    // --- 1. ADIM: SADECE ÖN KONTROL (Tahsilat Yapma) ---
     let totalCost = 0;
-    if (normalizedSearchGender === 'female') totalCost += 8; // Sadece kadın seçimi 8 Gem
-    if (normalizedSelectedCountry !== 'all') totalCost += 4; // Ülke seçimi 4 Gem
+    if (normalizedSearchGender === 'female') totalCost += 8;
+    if (normalizedSelectedCountry !== 'all') totalCost += 4;
 
     if (totalCost > 0) {
         if (!u.dbId) {
@@ -236,26 +236,17 @@ io.on('connection', async (socket) => {
                     message: `Yetersiz bakiye! Bu eşleşme için ${totalCost} Gem gerekiyor.` 
                 });
             }
-
-            // Ücreti tahsil et
-            dbUser.gems -= totalCost;
-            await dbUser.save();
-            
-            // Frontend bakiyesini güncelle
-            socket.emit('update_my_likes', { gems: dbUser.gems }); // Veya özel bir update_gems eventi
-            console.log(`💎 [${socket.id.slice(0,6)}] ${totalCost} Gem harcadı. Kalan: ${dbUser.gems}`);
+            // Not: Burada henüz gems düşmüyoruz, sadece varlığını onayladık.
         } catch (err) {
-            console.error("❌ Gem işlem hatası:", err);
+            console.error("❌ Bakiye kontrol hatası:", err);
             return;
         }
     }
-    // ---------------------------------------
 
-    console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender} - ${myCountryCode} | Aradığı: ${searchGender} - ${normalizedSelectedCountry})`);
+    console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender} | Filtre: ${normalizedSearchGender} - ${normalizedSelectedCountry})`);
     
     const existingPartner = activeMatches.get(socket.id);
     if (existingPartner) {
-        console.log(`⚠️ GÜVENLİK: [${socket.id.slice(0,6)}] yeni arama yaptı ama eski eşleşmesi askıda kalmış. Temizleniyor...`);
         io.to(existingPartner).emit('partner_left_auto_next');
         activeMatches.delete(socket.id);
         activeMatches.delete(existingPartner);
@@ -265,8 +256,12 @@ io.on('connection', async (socket) => {
     globalQueue = globalQueue.filter(item => item.id !== socket.id);
     u.status = 'SEARCHING'; 
     u.myGender = myGender;
+    // Filtre tercihlerini socket objesine geçici olarak kaydedelim ki tryMatch içinde kullanalım
+    u.searchGender = normalizedSearchGender;
+    u.selectedCountry = normalizedSelectedCountry;
 
     const myHasAnyFilter = normalizedSearchGender !== 'all' || normalizedSelectedCountry !== 'all';
+    
     const partnerHasAnyFilter = (p) => {
       const pSearchGender = String(p.searchGender || 'all');
       const pSelectedCountry = normalizeCountry(p.selectedCountry || 'all');
@@ -277,11 +272,7 @@ io.on('connection', async (socket) => {
       const pHasAnyFilter = partnerHasAnyFilter(p);
       const pCountryCode = normalizeCountry(p.countryCode || 'UN');
       const sameCountry = pCountryCode === myCountryCode;
-
-      if (myHasAnyFilter) {
-        return pHasAnyFilter ? 0 : 1;
-      }
-
+      if (myHasAnyFilter) return pHasAnyFilter ? 0 : 1;
       if (!pHasAnyFilter && sameCountry) return 0;
       if (!pHasAnyFilter) return 1;
       return 2;
@@ -315,11 +306,28 @@ io.on('connection', async (socket) => {
         }
       });
 
-      const partnerIndex = bestIndex;
+      if (bestIndex !== -1) {
+        // --- 2. ADIM: GERÇEK TAHSİLAT NOKTASI (Eşleşme Kesinleşti) ---
+        if (totalCost > 0 && u.dbId) {
+            try {
+                const dbUser = await User.findById(u.dbId);
+                if (dbUser && dbUser.gems >= totalCost) {
+                    dbUser.gems -= totalCost;
+                    await dbUser.save();
+                    socket.emit('update_my_likes', { gems: dbUser.gems });
+                    console.log(`💎 [${socket.id.slice(0,6)}] Eşleşme sağlandı, ${totalCost} Gem tahsil edildi.`);
+                } else {
+                    // Nadir durum: Arama sırasında bakiye biterse eşleşmeyi iptal et
+                    return false;
+                }
+            } catch (err) {
+                console.error("❌ Tahsilat hatası:", err);
+                return false;
+            }
+        }
 
-      if (partnerIndex !== -1) {
-        const partner = globalQueue[partnerIndex];
-        globalQueue.splice(partnerIndex, 1);
+        const partner = globalQueue[bestIndex];
+        globalQueue.splice(bestIndex, 1);
         
         activeMatches.set(socket.id, partner.id);
         activeMatches.set(partner.id, socket.id);
@@ -337,21 +345,8 @@ io.on('connection', async (socket) => {
             startTime: new Date()
         });
 
-        console.log(`🎉 EŞLEŞME BAŞARILI: [${socket.id.slice(0,6)}] ❤️ [${partner.id.slice(0,6)}]`);
-
-        let myDbUser = null;
-        let pDbUser = null;
-
-        try {
-            if (myDetails?.dbId && mongoose.Types.ObjectId.isValid(myDetails.dbId)) {
-                myDbUser = await User.findById(myDetails.dbId);
-            }
-            if (pDetails?.dbId && mongoose.Types.ObjectId.isValid(pDetails.dbId)) {
-                pDbUser = await User.findById(pDetails.dbId);
-            }
-        } catch (dbErr) {
-            console.error("⚠️ Veritabanı sorgu hatası (Match):", dbErr.message);
-        }
+        let myDbUser = await User.findById(u.dbId);
+        let pDbUser = pDetails?.dbId ? await User.findById(pDetails.dbId) : null;
 
         io.to(socket.id).emit('partner_found', { 
             partnerId: partner.id, 
@@ -361,7 +356,7 @@ io.on('connection', async (socket) => {
             partnerLikes: pDetails ? pDetails.likes : 0,
             partnerName: pDbUser ? pDbUser.name : "Stranger",
             partnerAvatar: pDbUser ? pDbUser.avatar : null,
-            myNewGems: myDbUser ? myDbUser.gems : 0 // Bakiyeyi eşleşme anında da gönderelim
+            myNewGems: myDbUser ? myDbUser.gems : 0
         });
 
         io.to(partner.id).emit('partner_found', { 
@@ -380,8 +375,14 @@ io.on('connection', async (socket) => {
     };
 
     if (!(await tryMatch())) {
-      globalQueue.push({ id: socket.id, myGender, searchGender: normalizedSearchGender, countryCode: myCountryCode, selectedCountry: normalizedSelectedCountry });
-      console.log(`⏳ [${socket.id.slice(0,6)}] Kuyruğa eklendi. Kuyrukta bekleyen: ${globalQueue.length} kişi`);
+      globalQueue.push({ 
+        id: socket.id, 
+        myGender, 
+        searchGender: normalizedSearchGender, 
+        countryCode: myCountryCode, 
+        selectedCountry: normalizedSelectedCountry 
+      });
+      console.log(`⏳ [${socket.id.slice(0,6)}] Kuyruğa eklendi. (Gems henüz düşülmedi)`);
     }
 });
 
