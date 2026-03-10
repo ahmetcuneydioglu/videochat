@@ -78,6 +78,18 @@ const MessageSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now }
 });
 const Message = mongoose.model('Message', MessageSchema);
+
+const MatchHistorySchema = new mongoose.Schema({
+  user1: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  user2: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  duration: { type: Number, required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+MatchHistorySchema.index({ user1: 1 });
+MatchHistorySchema.index({ user2: 1 });
+
+const MatchHistory = mongoose.model('MatchHistory', MatchHistorySchema);
 // -----------------------------------
 
 let globalQueue = [];
@@ -137,6 +149,41 @@ const normalizeCountry = (code) => {
   const normalized = String(code).toUpperCase();
   return normalized === 'ALL' ? 'all' : normalized;
 };
+const isValidObjectId = (id) =>
+  Boolean(id) &&
+  id !== "null" &&
+  id !== "undefined" &&
+  mongoose.Types.ObjectId.isValid(id);
+
+async function saveMatchHistoryIfEligible(socketId) {
+  const partnerId = activeMatches.get(socketId);
+  if (!partnerId) return;
+
+  const matchId = getMatchId(socketId, partnerId);
+  const match = global.liveMatches.get(matchId);
+  if (!match || !match.startTime) return;
+
+  const duration = Math.floor((Date.now() - new Date(match.startTime).getTime()) / 1000);
+  if (duration <= 8) return;
+
+  const myDetails = userDetails.get(socketId);
+  const partnerDetails = userDetails.get(partnerId);
+  const myDbId = myDetails?.dbId;
+  const partnerDbId = partnerDetails?.dbId;
+
+  if (!isValidObjectId(myDbId) || !isValidObjectId(partnerDbId)) return;
+  if (String(myDbId) === String(partnerDbId)) return;
+
+  try {
+    await MatchHistory.create({
+      user1: myDbId,
+      user2: partnerDbId,
+      duration
+    });
+  } catch (err) {
+    console.error("❌ Match history kaydedilemedi:", err);
+  }
+}
 
 io.on('connection', async (socket) => {
   let userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
@@ -215,7 +262,7 @@ io.on('connection', async (socket) => {
       if (!u) return;
 
       // GEÇERLİ ID KONTROL FONKSİYONU
-      const isValidId = (id) => id && id !== "null" && id !== "undefined" && mongoose.Types.ObjectId.isValid(id);
+      const isValidId = isValidObjectId;
       
       const myCountryCode = normalizeCountry(u.country ? u.country : 'UN');
 
@@ -396,7 +443,7 @@ io.on('connection', async (socket) => {
       }
   });
 
-  socket.on('next_user', () => {
+  socket.on('next_user', async () => {
     const partnerId = activeMatches.get(socket.id);
     const matchId = getMatchId(socket.id, partnerId);
     const match = global.liveMatches.get(matchId);
@@ -410,6 +457,8 @@ io.on('connection', async (socket) => {
         if (myDetails?.dbId) updateTrustScore(myDetails.dbId, 5);
         if (pDetails?.dbId) updateTrustScore(pDetails.dbId, 5);
       }
+
+      await saveMatchHistoryIfEligible(socket.id);
 
       console.log(`⏭️ [${socket.id.slice(0,6)}] NEXT dedi.`);
       io.to(partnerId).emit('partner_left_auto_next');
@@ -469,8 +518,9 @@ io.on('connection', async (socket) => {
     }
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     console.log(`❌ Bağlantı Koptu: [${socket.id.slice(0,6)}]`);
+    await saveMatchHistoryIfEligible(socket.id);
     const partnerId = activeMatches.get(socket.id);
     if (partnerId) {
       io.to(partnerId).emit('partner_left_auto_next');
@@ -674,6 +724,47 @@ app.get('/api/admin/stats', async (req, res) => {
   res.json({ activeUsers: userDetails.size, totalBans: totalActiveBans, pendingReports: await Report.countDocuments(), totalMatchesToday: 0 });
 });
 app.get('/api/admin/active-matches', (req, res) => res.json(global.liveMatches ? Array.from(global.liveMatches.values()) : []));
+
+app.get('/api/users/:userId/history', async (req, res) => {
+  const { userId } = req.params;
+
+  if (!isValidObjectId(userId)) {
+    return res.status(400).json({ error: "Geçersiz kullanıcı ID" });
+  }
+
+  try {
+    const matches = await MatchHistory.find({
+      $or: [{ user1: userId }, { user2: userId }]
+    })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .populate('user1', 'name avatar')
+      .populate('user2', 'name avatar');
+
+    const history = matches.map((match) => {
+      const isRequesterUser1 = String(match.user1?._id) === String(userId);
+      const partner = isRequesterUser1 ? match.user2 : match.user1;
+
+      return {
+        id: match._id,
+        duration: match.duration,
+        createdAt: match.createdAt,
+        partner: partner ? {
+          id: partner._id,
+          name: partner.name || "Stranger",
+          avatar: partner.avatar || null,
+          country: null,
+          countryFlag: null
+        } : null
+      };
+    });
+
+    res.json(history);
+  } catch (err) {
+    console.error("❌ Match history getirilemedi:", err);
+    res.status(500).json({ error: "Eşleşme geçmişi getirilemedi" });
+  }
+});
 
 app.post('/api/ban-user', async (req, res) => {
   const { ip, reportedId, reason } = req.body;
