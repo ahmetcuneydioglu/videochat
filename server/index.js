@@ -5,6 +5,8 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const geoip = require('geoip-lite');
 const { OAuth2Client } = require('google-auth-library');
+const User = require('./models/User');
+const MatchHistory = require('./models/MatchHistory');
 
 const app = express();
 
@@ -36,28 +38,6 @@ mongoose.connect(MONGODB_URI)
   .then(() => console.log('✅ MongoDB Bağlantısı Başarılı'))
   .catch(err => console.error('❌ MongoDB Bağlantı Hatası:', err));
 
-// --- MODELLER ---
-const UserSchema = new mongoose.Schema({
-  googleId: { type: String, unique: true, sparse: true },
-  email: { type: String, unique: true, sparse: true },
-  name: String,
-  avatar: String,
-  likes: { type: Number, default: 0 },
-  isRegistered: { type: Boolean, default: false },
-  role: { type: String, default: 'user' }, // 'user', 'vip', 'admin'
-  trustScore: { type: Number, default: 100 }, // Güven Skoru (0-100)
-  status: { type: String, default: 'active' }, // 'active', 'shadow_banned'
-  lastSeen: { type: Date, default: Date.now },
-  createdAt: { type: Date, default: Date.now },
-  // YENİ EKLENEN: TAŞ VE ÖDÜL SİSTEMİ ALANLARI
-  gems: { type: Number, default: 25 }, 
-  dailyStreak: { type: Number, default: 0 }, 
-  lastLoginDate: { type: Date }, 
-  lastClaimedDate: { type: Date } 
-});
-
-const User = mongoose.model('User', UserSchema);
-
 // Ban şemasına expireAt eklendi
 const BanSchema = new mongoose.Schema({ 
   ip: String, 
@@ -78,18 +58,6 @@ const MessageSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now }
 });
 const Message = mongoose.model('Message', MessageSchema);
-
-const MatchHistorySchema = new mongoose.Schema({
-  user1: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  user2: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  duration: { type: Number, required: true },
-  createdAt: { type: Date, default: Date.now }
-});
-
-MatchHistorySchema.index({ user1: 1 });
-MatchHistorySchema.index({ user2: 1 });
-
-const MatchHistory = mongoose.model('MatchHistory', MatchHistorySchema);
 // -----------------------------------
 
 let globalQueue = [];
@@ -113,6 +81,10 @@ app.post('/api/auth/social-login', async (req, res) => {
     });
     
     const payload = ticket.getPayload();
+    const requestIp = getClientIp(req.headers['x-forwarded-for'] || req.socket.remoteAddress);
+    const geo = geoip.lookup(requestIp);
+    const country = normalizeCountry(geo ? geo.country : 'UN');
+    const countryFlag = countryCodeToFlag(country);
     let user = await User.findOne({ googleId: payload['sub'] });
     
     if (!user) {
@@ -121,10 +93,22 @@ app.post('/api/auth/social-login', async (req, res) => {
         email: payload['email'], 
         name: payload['name'], 
         avatar: payload['picture'], 
+        country,
+        countryFlag,
         isRegistered: true 
       });
-      await user.save();
+    } else {
+      user.email = payload['email'];
+      user.name = payload['name'];
+      user.avatar = payload['picture'];
+      user.country = country;
+      user.countryFlag = countryFlag;
+      user.isRegistered = true;
     }
+
+    user.lastLoginDate = new Date();
+    user.lastSeen = new Date();
+    await user.save();
     
     res.json(user);
     
@@ -149,6 +133,17 @@ const normalizeCountry = (code) => {
   const normalized = String(code).toUpperCase();
   return normalized === 'ALL' ? 'all' : normalized;
 };
+const countryCodeToFlag = (code) => {
+  const normalized = normalizeCountry(code);
+  if (!/^[A-Z]{2}$/.test(normalized)) return null;
+  return String.fromCodePoint(...[...normalized].map((char) => 127397 + char.charCodeAt(0)));
+};
+const getClientIp = (sourceIp) => {
+  let userIP = sourceIp || '';
+  if (userIP.includes(',')) userIP = userIP.split(',')[0].trim();
+  if (userIP === '::1' || userIP === '127.0.0.1') userIP = '176.234.224.0';
+  return userIP;
+};
 const isValidObjectId = (id) =>
   Boolean(id) &&
   id !== "null" &&
@@ -157,22 +152,45 @@ const isValidObjectId = (id) =>
 
 async function saveMatchHistoryIfEligible(socketId) {
   const partnerId = activeMatches.get(socketId);
-  if (!partnerId) return;
+  if (!partnerId) {
+    console.log(`ℹ️ Match history skipped for [${socketId.slice(0,6)}]: No active partner.`);
+    return;
+  }
 
   const matchId = getMatchId(socketId, partnerId);
   const match = global.liveMatches.get(matchId);
-  if (!match || !match.startTime) return;
+  if (!match || !match.startTime) {
+    console.log(`ℹ️ Match history skipped for [${socketId.slice(0,6)}]: Live match not found.`);
+    return;
+  }
+
+  if (match.historySaved) {
+    console.log(`ℹ️ Match history skipped for [${socketId.slice(0,6)}]: Already saved.`);
+    return;
+  }
 
   const duration = Math.floor((Date.now() - new Date(match.startTime).getTime()) / 1000);
-  if (duration <= 8) return;
+  if (duration <= 5) {
+    console.log(`ℹ️ Match history skipped for [${socketId.slice(0,6)}]: Duration too short (${duration}s).`);
+    return;
+  }
 
-  const myDetails = userDetails.get(socketId);
-  const partnerDetails = userDetails.get(partnerId);
-  const myDbId = myDetails?.dbId;
-  const partnerDbId = partnerDetails?.dbId;
+  const myDbId = match.user1?.id === socketId ? match.user1?.dbId : match.user2?.dbId;
+  const partnerDbId = match.user1?.id === socketId ? match.user2?.dbId : match.user1?.dbId;
 
-  if (!isValidObjectId(myDbId) || !isValidObjectId(partnerDbId)) return;
-  if (String(myDbId) === String(partnerDbId)) return;
+  if (!isValidObjectId(myDbId) || !isValidObjectId(partnerDbId)) {
+    console.log(`ℹ️ Match history skipped for [${socketId.slice(0,6)}]: Missing DB ID.`, {
+      myDbId,
+      partnerDbId,
+      matchId
+    });
+    return;
+  }
+
+  if (String(myDbId) === String(partnerDbId)) {
+    console.log(`ℹ️ Match history skipped for [${socketId.slice(0,6)}]: Same DB ID on both sides.`);
+    return;
+  }
 
   try {
     await MatchHistory.create({
@@ -180,15 +198,15 @@ async function saveMatchHistoryIfEligible(socketId) {
       user2: partnerDbId,
       duration
     });
+    match.historySaved = true;
+    console.log(`✅ Match history saved: ${matchId} (${duration}s)`);
   } catch (err) {
     console.error("❌ Match history kaydedilemedi:", err);
   }
 }
 
 io.on('connection', async (socket) => {
-  let userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
-  if (userIP.includes(',')) userIP = userIP.split(',')[0].trim();
-  if (userIP === '::1' || userIP === '127.0.0.1') userIP = '176.234.224.0';
+  let userIP = getClientIp(socket.handshake.headers['x-forwarded-for'] || socket.handshake.address);
   
   const activeBan = await Ban.findOne({ 
     ip: userIP, 
@@ -206,6 +224,7 @@ io.on('connection', async (socket) => {
 
   const geo = geoip.lookup(userIP);
   const countryCode = normalizeCountry(geo ? geo.country : 'UN');
+  const countryFlag = countryCodeToFlag(countryCode);
 
   console.log(`👤 Yeni Bağlantı: ${socket.id.slice(0,6)}... (IP: ${userIP}, Ülke: ${countryCode})`);
 
@@ -214,11 +233,28 @@ io.on('connection', async (socket) => {
 
   if (dbUserId && mongoose.Types.ObjectId.isValid(dbUserId)) {
     const dbUser = await User.findById(dbUserId);
-    if (dbUser) { currentLikes = dbUser.likes; isRegistered = true;
-  socket.emit('update_my_likes', { likes: dbUser.likes });}
+    if (dbUser) {
+      dbUser.country = countryCode;
+      dbUser.countryFlag = countryFlag;
+      dbUser.lastSeen = new Date();
+      await dbUser.save();
+      currentLikes = dbUser.likes;
+      isRegistered = true;
+      socket.emit('update_my_likes', { likes: dbUser.likes });
+    }
   }
 
-  userDetails.set(socket.id, { id: socket.id, dbId: dbUserId || null, ip: userIP, country: countryCode, status: 'IDLE', likes: currentLikes, isRegistered, myGender: 'male' });
+  userDetails.set(socket.id, {
+    id: socket.id,
+    dbId: dbUserId || null,
+    ip: userIP,
+    country: countryCode,
+    countryFlag,
+    status: 'IDLE',
+    likes: currentLikes,
+    isRegistered,
+    myGender: 'male'
+  });
 
   // --- WEBRTC SIGNALING FORWARDERS ---
   function getVerifiedPartnerId(socket, to) {
@@ -393,9 +429,26 @@ io.on('connection', async (socket) => {
           const matchId = getMatchId(socket.id, partner.id);
           global.liveMatches.set(matchId, {
               id: matchId,
-              user1: { id: socket.id, country: myCountryCode, ip: u.ip },
-              user2: { id: partner.id, country: partner.countryCode, ip: pDetails ? pDetails.ip : 'N/A' },
-              startTime: new Date()
+              user1: {
+                id: socket.id,
+                dbId: myDetails?.dbId || u.dbId || null,
+                country: myCountryCode,
+                countryFlag: myDetails?.countryFlag || countryCodeToFlag(myCountryCode),
+                ip: u.ip
+              },
+              user2: {
+                id: partner.id,
+                dbId: pDetails?.dbId || partner.dbId || null,
+                country: partner.countryCode,
+                countryFlag: pDetails?.countryFlag || countryCodeToFlag(partner.countryCode),
+                ip: pDetails ? pDetails.ip : 'N/A'
+              },
+              startTime: new Date(),
+              historySaved: false
+          });
+          console.log(`🎯 Live match created: ${matchId}`, {
+            user1DbId: myDetails?.dbId || u.dbId || null,
+            user2DbId: pDetails?.dbId || partner.dbId || null
           });
 
           let myDbUser = isValidId(u.dbId) ? await User.findById(u.dbId) : null;
@@ -738,8 +791,8 @@ app.get('/api/users/:userId/history', async (req, res) => {
     })
       .sort({ createdAt: -1 })
       .limit(20)
-      .populate('user1', 'name avatar')
-      .populate('user2', 'name avatar');
+      .populate('user1', 'name avatar country countryFlag')
+      .populate('user2', 'name avatar country countryFlag');
 
     const history = matches.map((match) => {
       const isRequesterUser1 = String(match.user1?._id) === String(userId);
@@ -753,8 +806,8 @@ app.get('/api/users/:userId/history', async (req, res) => {
           id: partner._id,
           name: partner.name || "Stranger",
           avatar: partner.avatar || null,
-          country: null,
-          countryFlag: null
+          country: partner.country || null,
+          countryFlag: partner.countryFlag || null
         } : null
       };
     });
