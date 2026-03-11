@@ -65,6 +65,8 @@ let globalQueue = [];
 const activeMatches = new Map();
 const userDetails = new Map();
 const pendingPrivateCalls = new Map();
+const connectedUsers = new Map();
+const socketToDbUser = new Map();
 
 if (!global.liveMatches) global.liveMatches = new Map();
 
@@ -152,9 +154,8 @@ const isValidObjectId = (id) =>
   id !== "undefined" &&
   mongoose.Types.ObjectId.isValid(id);
 const getConnectedSocketsByDbId = (dbId) =>
-  Array.from(userDetails.entries())
-    .filter(([, details]) => String(details?.dbId) === String(dbId))
-    .map(([socketId]) => socketId);
+  connectedUsers.has(String(dbId)) ? [connectedUsers.get(String(dbId))] : [];
+const getDbIdBySocketId = (socketId) => socketToDbUser.get(socketId) || null;
 const isSocketBusy = (socketId) => activeMatches.has(socketId);
 const clearPendingPrivateCall = (socketId) => {
   const pendingCall = pendingPrivateCalls.get(socketId);
@@ -318,6 +319,29 @@ io.on('connection', async (socket) => {
   });
 
   if (isValidObjectId(dbUserId)) {
+    connectedUsers.set(String(dbUserId), socket.id);
+    socketToDbUser.set(socket.id, String(dbUserId));
+  }
+
+  socket.on('register_user', ({ dbUserId: registeredDbUserId, userId }) => {
+    const resolvedDbUserId = registeredDbUserId || userId;
+    console.log('register_user payload:', { registeredDbUserId, userId, resolvedDbUserId, socketId: socket.id });
+
+    if (!isValidObjectId(resolvedDbUserId)) {
+      return;
+    }
+
+    connectedUsers.set(String(resolvedDbUserId), socket.id);
+    socketToDbUser.set(socket.id, String(resolvedDbUserId));
+
+    const existingDetails = userDetails.get(socket.id);
+    if (existingDetails) {
+      existingDetails.dbId = String(resolvedDbUserId);
+      existingDetails.isRegistered = true;
+    }
+  });
+
+  if (isValidObjectId(dbUserId)) {
     try {
       const followerLinks = await Follow.find({ following: dbUserId }).select('follower');
 
@@ -378,27 +402,29 @@ io.on('connection', async (socket) => {
     const me = userDetails.get(socket.id);
     const normalizedCallerId = callerId ? String(callerId) : null;
     const normalizedTargetUserId = targetUserId ? String(targetUserId) : null;
+    const finalCallerId = normalizedCallerId || getDbIdBySocketId(socket.id);
 
-    console.log("Private Call Request from:", normalizedCallerId, "to:", normalizedTargetUserId);
+    console.log("Private Call Request from:", finalCallerId, "to:", normalizedTargetUserId);
     console.log("Active Sockets (userDetails keys):", Array.from(userDetails.keys()));
+    console.log("Connected Users (dbId -> socketId):", Array.from(connectedUsers.entries()));
 
     if (!me) {
       console.log("private_call_request -> target_unavailable: Caller socket not found in userDetails");
       return socket.emit('target_unavailable');
     }
 
-    if (!isValidObjectId(normalizedCallerId) || !isValidObjectId(normalizedTargetUserId)) {
+    if (!isValidObjectId(finalCallerId) || !isValidObjectId(normalizedTargetUserId)) {
       console.log("private_call_request -> target_unavailable: Invalid callerId or targetUserId", {
-        callerId: normalizedCallerId,
+        callerId: finalCallerId,
         targetUserId: normalizedTargetUserId
       });
       return socket.emit('target_unavailable');
     }
 
-    if (String(me.dbId) !== normalizedCallerId) {
+    if (me.dbId && String(me.dbId) !== finalCallerId) {
       console.log("private_call_request -> target_unavailable: callerId does not match socket dbId", {
         socketDbId: me.dbId,
-        callerId: normalizedCallerId
+        callerId: finalCallerId
       });
       return socket.emit('target_unavailable');
     }
@@ -408,10 +434,11 @@ io.on('connection', async (socket) => {
       return socket.emit('target_unavailable');
     }
 
-    const targetSocketCandidates = getConnectedSocketsByDbId(normalizedTargetUserId);
-    console.log("private_call_request -> target socket candidates:", targetSocketCandidates);
-
-    const targetSocketId = targetSocketCandidates[0];
+    const targetSocketId = connectedUsers.get(normalizedTargetUserId) || userDetails.get(normalizedTargetUserId);
+    console.log("private_call_request -> target socket lookup:", {
+      targetUserId: normalizedTargetUserId,
+      targetSocketId
+    });
 
     if (!targetSocketId) {
       console.log("private_call_request -> target_unavailable: Target socket not found for dbId", normalizedTargetUserId);
@@ -442,17 +469,17 @@ io.on('connection', async (socket) => {
     }
 
     try {
-      const callerUser = await User.findById(normalizedCallerId);
+      const callerUser = await User.findById(finalCallerId);
       if (!callerUser) {
         console.log("private_call_request -> target_unavailable: Caller user not found in DB", {
-          callerId: normalizedCallerId
+          callerId: finalCallerId
         });
         return socket.emit('target_unavailable');
       }
 
       if (!callerUser || (callerUser.gems || 0) < 20) {
         console.log("private_call_request -> insufficient_gems", {
-          callerId: normalizedCallerId,
+          callerId: finalCallerId,
           gems: callerUser ? callerUser.gems : null
         });
         return socket.emit('insufficient_gems', {
@@ -463,28 +490,28 @@ io.on('connection', async (socket) => {
       pendingPrivateCalls.set(socket.id, {
         type: 'outgoing',
         partnerSocketId: targetSocketId,
-        callerDbId: normalizedCallerId,
+        callerDbId: finalCallerId,
         targetDbId: normalizedTargetUserId
       });
 
       pendingPrivateCalls.set(targetSocketId, {
         type: 'incoming',
         partnerSocketId: socket.id,
-        callerDbId: normalizedCallerId,
+        callerDbId: finalCallerId,
         targetDbId: normalizedTargetUserId
       });
 
       console.log("private_call_request -> incoming_private_call emitted", {
         callerSocketId: socket.id,
         targetSocketId,
-        callerId: normalizedCallerId,
+        callerId: finalCallerId,
         targetUserId: normalizedTargetUserId
       });
 
       io.to(targetSocketId).emit('incoming_private_call', {
         callerName: callerUser.name || 'Stranger',
         callerAvatar: callerUser.avatar || null,
-        callerId: normalizedCallerId
+        callerId: finalCallerId
       });
     } catch (err) {
       console.error('❌ Private call request hatası:', err);
@@ -832,6 +859,11 @@ io.on('connection', async (socket) => {
     if (pendingCall?.partnerSocketId) {
       io.to(pendingCall.partnerSocketId).emit('target_unavailable');
     }
+    const disconnectedDbId = getDbIdBySocketId(socket.id);
+    if (disconnectedDbId && connectedUsers.get(disconnectedDbId) === socket.id) {
+      connectedUsers.delete(disconnectedDbId);
+    }
+    socketToDbUser.delete(socket.id);
     await saveMatchHistoryIfEligible(socket.id);
     const partnerId = activeMatches.get(socket.id);
     if (partnerId) {
