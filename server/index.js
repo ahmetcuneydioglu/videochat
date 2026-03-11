@@ -815,36 +815,44 @@ app.get('/api/admin/stats', async (req, res) => {
 app.get('/api/admin/active-matches', (req, res) => res.json(global.liveMatches ? Array.from(global.liveMatches.values()) : []));
 
 app.post('/api/users/follow', async (req, res) => {
-  const { followerId, followingId } = req.body;
+  console.log('FOLLOW req.body:', req.body);
 
-  if (!isValidObjectId(followerId) || !isValidObjectId(followingId)) {
-    return res.status(400).json({ error: 'Geçersiz kullanıcı ID' });
-  }
-
-  if (String(followerId) === String(followingId)) {
-    return res.status(400).json({ error: 'Kullanıcı kendini takip edemez' });
-  }
+  const { userId, followingId } = req.body;
 
   try {
+    if (
+      !mongoose.Types.ObjectId.isValid(userId) ||
+      !mongoose.Types.ObjectId.isValid(followingId)
+    ) {
+      return res.status(400).json({ error: "Geçersiz kullanıcı ID formatı" });
+    }
+
+    const followerObjectId = new mongoose.Types.ObjectId(userId);
+    const followingObjectId = new mongoose.Types.ObjectId(followingId);
+
+    if (String(followerObjectId) === String(followingObjectId)) {
+      return res.status(400).json({ error: 'Kullanıcı kendini takip edemez' });
+    }
+
     const existingFollow = await Follow.findOne({
-      follower: followerId,
-      following: followingId
+      follower: followerObjectId,
+      following: followingObjectId
     });
 
     if (existingFollow) {
       await Follow.deleteOne({ _id: existingFollow._id });
-      return res.json({ success: true, isFollowing: false });
+      return res.json({ message: "Unfollowed", isFollowing: false });
     }
 
     await Follow.create({
-      follower: followerId,
-      following: followingId
+      follower: followerObjectId,
+      following: followingObjectId
     });
 
-    res.json({ success: true, isFollowing: true });
+    return res.json({ message: "Followed", isFollowing: true });
   } catch (err) {
     console.error('❌ Follow toggle hatası:', err);
-    res.status(500).json({ error: 'Takip durumu güncellenemedi' });
+    return res.status(500).json({ error: 'Takip durumu güncellenemedi' });
   }
 });
 
