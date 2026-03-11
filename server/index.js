@@ -64,6 +64,7 @@ const Message = mongoose.model('Message', MessageSchema);
 let globalQueue = [];
 const activeMatches = new Map();
 const userDetails = new Map();
+const pendingPrivateCalls = new Map();
 
 if (!global.liveMatches) global.liveMatches = new Map();
 
@@ -154,6 +155,55 @@ const getConnectedSocketsByDbId = (dbId) =>
   Array.from(userDetails.entries())
     .filter(([, details]) => String(details?.dbId) === String(dbId))
     .map(([socketId]) => socketId);
+const isSocketBusy = (socketId) => activeMatches.has(socketId);
+const clearPendingPrivateCall = (socketId) => {
+  const pendingCall = pendingPrivateCalls.get(socketId);
+  if (!pendingCall) return null;
+
+  pendingPrivateCalls.delete(socketId);
+  if (pendingCall.partnerSocketId) {
+    pendingPrivateCalls.delete(pendingCall.partnerSocketId);
+  }
+
+  return pendingCall;
+};
+const createLiveMatchRecord = ({ socketId, partnerSocketId, initiatorCountry, partnerCountry }) => {
+  const initiatorDetails = userDetails.get(socketId);
+  const partnerDetails = userDetails.get(partnerSocketId);
+  const matchId = getMatchId(socketId, partnerSocketId);
+
+  activeMatches.set(socketId, partnerSocketId);
+  activeMatches.set(partnerSocketId, socketId);
+
+  if (initiatorDetails) initiatorDetails.status = 'BUSY';
+  if (partnerDetails) partnerDetails.status = 'BUSY';
+
+  global.liveMatches.set(matchId, {
+    id: matchId,
+    user1: {
+      id: socketId,
+      dbId: initiatorDetails?.dbId || null,
+      country: initiatorCountry,
+      countryFlag: initiatorDetails?.countryFlag || countryCodeToFlag(initiatorCountry),
+      ip: initiatorDetails?.ip || 'N/A'
+    },
+    user2: {
+      id: partnerSocketId,
+      dbId: partnerDetails?.dbId || null,
+      country: partnerCountry,
+      countryFlag: partnerDetails?.countryFlag || countryCodeToFlag(partnerCountry),
+      ip: partnerDetails?.ip || 'N/A'
+    },
+    startTime: new Date(),
+    historySaved: false
+  });
+
+  return {
+    matchId,
+    initiatorDetails,
+    partnerDetails
+  };
+};
 
 function sendPushNotification(userId, message) {
   console.log(`📲 Push placeholder -> ${userId}: ${message}`);
@@ -324,6 +374,134 @@ io.on('connection', async (socket) => {
     io.to(partnerId).emit('camera_state', { from: socket.id, isOff: Boolean(isOff) });
   });
 
+  socket.on('private_call_request', async ({ callerId, targetUserId }) => {
+    const me = userDetails.get(socket.id);
+
+    if (!me || !isValidObjectId(callerId) || !isValidObjectId(targetUserId)) {
+      return socket.emit('target_unavailable');
+    }
+
+    if (String(me.dbId) !== String(callerId)) {
+      return socket.emit('target_unavailable');
+    }
+
+    if (isSocketBusy(socket.id) || pendingPrivateCalls.has(socket.id)) {
+      return socket.emit('target_unavailable');
+    }
+
+    const targetSocketId = getConnectedSocketsByDbId(targetUserId).find((socketId) => !isSocketBusy(socketId));
+
+    if (!targetSocketId || pendingPrivateCalls.has(targetSocketId)) {
+      return socket.emit('target_unavailable');
+    }
+
+    const targetDetails = userDetails.get(targetSocketId);
+    if (!targetDetails || !isValidObjectId(targetDetails.dbId)) {
+      return socket.emit('target_unavailable');
+    }
+
+    try {
+      const callerUser = await User.findById(callerId);
+      if (!callerUser || (callerUser.gems || 0) < 20) {
+        return socket.emit('insufficient_gems', {
+          message: 'Private call için 20 Gem gerekli.'
+        });
+      }
+
+      pendingPrivateCalls.set(socket.id, {
+        type: 'outgoing',
+        partnerSocketId: targetSocketId,
+        callerDbId: callerId,
+        targetDbId: targetUserId
+      });
+
+      pendingPrivateCalls.set(targetSocketId, {
+        type: 'incoming',
+        partnerSocketId: socket.id,
+        callerDbId: callerId,
+        targetDbId: targetUserId
+      });
+
+      io.to(targetSocketId).emit('incoming_private_call', {
+        callerName: callerUser.name || 'Stranger',
+        callerAvatar: callerUser.avatar || null,
+        callerId
+      });
+    } catch (err) {
+      console.error('❌ Private call request hatası:', err);
+      socket.emit('target_unavailable');
+    }
+  });
+
+  socket.on('private_call_accepted', async ({ callerId }) => {
+    const pendingCall = pendingPrivateCalls.get(socket.id);
+    if (!pendingCall || pendingCall.type !== 'incoming') return;
+    if (callerId && String(pendingCall.callerDbId) !== String(callerId)) return;
+
+    const callerSocketId = pendingCall.partnerSocketId;
+    const callerDetails = userDetails.get(callerSocketId);
+    const targetDetails = userDetails.get(socket.id);
+
+    if (!callerDetails || !targetDetails || isSocketBusy(callerSocketId) || isSocketBusy(socket.id)) {
+      clearPendingPrivateCall(socket.id);
+      return io.to(callerSocketId).emit('target_unavailable');
+    }
+
+    clearPendingPrivateCall(socket.id);
+
+    globalQueue = globalQueue.filter((item) => item.id !== callerSocketId && item.id !== socket.id);
+
+    const {
+      matchId,
+      initiatorDetails: callerMatchDetails,
+      partnerDetails: targetMatchDetails
+    } = createLiveMatchRecord({
+      socketId: callerSocketId,
+      partnerSocketId: socket.id,
+      initiatorCountry: normalizeCountry(callerDetails.country || 'UN'),
+      partnerCountry: normalizeCountry(targetDetails.country || 'UN')
+    });
+
+    console.log(`📞 Private call accepted: ${matchId}`);
+
+    let callerUser = isValidObjectId(callerDetails.dbId) ? await User.findById(callerDetails.dbId) : null;
+    let targetUser = isValidObjectId(targetDetails.dbId) ? await User.findById(targetDetails.dbId) : null;
+
+    io.to(callerSocketId).emit('partner_found', {
+      partnerId: socket.id,
+      initiator: true,
+      country: normalizeCountry(targetDetails.country || 'UN'),
+      partnerGender: targetDetails.myGender || 'male',
+      partnerLikes: targetMatchDetails ? targetMatchDetails.likes : 0,
+      partnerName: targetUser ? targetUser.name : 'Stranger',
+      partnerAvatar: targetUser ? targetUser.avatar : null,
+      myNewGems: callerUser ? callerUser.gems : 0,
+      privateCall: true
+    });
+
+    io.to(socket.id).emit('partner_found', {
+      partnerId: callerSocketId,
+      initiator: false,
+      country: normalizeCountry(callerDetails.country || 'UN'),
+      partnerGender: callerDetails.myGender || 'male',
+      partnerLikes: callerMatchDetails ? callerMatchDetails.likes : 0,
+      partnerName: callerUser ? callerUser.name : 'Stranger',
+      partnerAvatar: callerUser ? callerUser.avatar : null,
+      myNewGems: targetUser ? targetUser.gems : 0,
+      privateCall: true
+    });
+  });
+
+  socket.on('private_call_rejected', ({ callerId }) => {
+    const pendingCall = pendingPrivateCalls.get(socket.id);
+    if (!pendingCall || pendingCall.type !== 'incoming') return;
+    if (callerId && String(pendingCall.callerDbId) !== String(callerId)) return;
+
+    const callerSocketId = pendingCall.partnerSocketId;
+    clearPendingPrivateCall(socket.id);
+    io.to(callerSocketId).emit('call_rejected');
+  });
+
   // --- EŞLEŞME (MATCH) MANTIĞI DÜZELTİLDİ ---
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
       
@@ -454,33 +632,15 @@ io.on('connection', async (socket) => {
 
           globalQueue.splice(bestIndex, 1);
           
-          activeMatches.set(socket.id, partner.id);
-          activeMatches.set(partner.id, socket.id);
-          
-          const myDetails = userDetails.get(socket.id);
-          const pDetails = userDetails.get(partner.id);
-          if (myDetails) myDetails.status = 'BUSY';
-          if (pDetails) pDetails.status = 'BUSY';
-
-          const matchId = getMatchId(socket.id, partner.id);
-          global.liveMatches.set(matchId, {
-              id: matchId,
-              user1: {
-                id: socket.id,
-                dbId: myDetails?.dbId || u.dbId || null,
-                country: myCountryCode,
-                countryFlag: myDetails?.countryFlag || countryCodeToFlag(myCountryCode),
-                ip: u.ip
-              },
-              user2: {
-                id: partner.id,
-                dbId: pDetails?.dbId || partner.dbId || null,
-                country: partner.countryCode,
-                countryFlag: pDetails?.countryFlag || countryCodeToFlag(partner.countryCode),
-                ip: pDetails ? pDetails.ip : 'N/A'
-              },
-              startTime: new Date(),
-              historySaved: false
+          const {
+            matchId,
+            initiatorDetails: myDetails,
+            partnerDetails: pDetails
+          } = createLiveMatchRecord({
+            socketId: socket.id,
+            partnerSocketId: partner.id,
+            initiatorCountry: myCountryCode,
+            partnerCountry: partner.countryCode
           });
           console.log(`🎯 Live match created: ${matchId}`, {
             user1DbId: myDetails?.dbId || u.dbId || null,
@@ -609,6 +769,10 @@ io.on('connection', async (socket) => {
 
   socket.on('disconnect', async () => {
     console.log(`❌ Bağlantı Koptu: [${socket.id.slice(0,6)}]`);
+    const pendingCall = clearPendingPrivateCall(socket.id);
+    if (pendingCall?.partnerSocketId) {
+      io.to(pendingCall.partnerSocketId).emit('target_unavailable');
+    }
     await saveMatchHistoryIfEligible(socket.id);
     const partnerId = activeMatches.get(socket.id);
     if (partnerId) {
