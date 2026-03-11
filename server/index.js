@@ -7,6 +7,7 @@ const geoip = require('geoip-lite');
 const { OAuth2Client } = require('google-auth-library');
 const User = require('./models/User');
 const MatchHistory = require('./models/MatchHistory');
+const Follow = require('./models/Follow');
 
 const app = express();
 
@@ -149,6 +150,14 @@ const isValidObjectId = (id) =>
   id !== "null" &&
   id !== "undefined" &&
   mongoose.Types.ObjectId.isValid(id);
+const getConnectedSocketsByDbId = (dbId) =>
+  Array.from(userDetails.entries())
+    .filter(([, details]) => String(details?.dbId) === String(dbId))
+    .map(([socketId]) => socketId);
+
+function sendPushNotification(userId, message) {
+  console.log(`📲 Push placeholder -> ${userId}: ${message}`);
+}
 
 async function saveMatchHistoryIfEligible(socketId) {
   const partnerId = activeMatches.get(socketId);
@@ -230,6 +239,7 @@ io.on('connection', async (socket) => {
 
   const dbUserId = socket.handshake.query.dbUserId; 
   let currentLikes = 0; let isRegistered = false;
+  let connectedUserName = 'Someone you follow';
 
   if (dbUserId && mongoose.Types.ObjectId.isValid(dbUserId)) {
     const dbUser = await User.findById(dbUserId);
@@ -240,6 +250,7 @@ io.on('connection', async (socket) => {
       await dbUser.save();
       currentLikes = dbUser.likes;
       isRegistered = true;
+      connectedUserName = dbUser.name || connectedUserName;
       socket.emit('update_my_likes', { likes: dbUser.likes });
     }
   }
@@ -255,6 +266,31 @@ io.on('connection', async (socket) => {
     isRegistered,
     myGender: 'male'
   });
+
+  if (isValidObjectId(dbUserId)) {
+    try {
+      const followerLinks = await Follow.find({ following: dbUserId }).select('follower');
+
+      for (const link of followerLinks) {
+        const followerId = String(link.follower);
+        const followerSocketIds = getConnectedSocketsByDbId(followerId);
+
+        if (followerSocketIds.length === 0) {
+          sendPushNotification(followerId, `${connectedUserName} is active now.`);
+          continue;
+        }
+
+        followerSocketIds.forEach((followerSocketId) => {
+          io.to(followerSocketId).emit('partner_online', {
+            userId: dbUserId,
+            name: connectedUserName
+          });
+        });
+      }
+    } catch (err) {
+      console.error('❌ Follower online notification hatası:', err);
+    }
+  }
 
   // --- WEBRTC SIGNALING FORWARDERS ---
   function getVerifiedPartnerId(socket, to) {
@@ -778,6 +814,56 @@ app.get('/api/admin/stats', async (req, res) => {
 });
 app.get('/api/admin/active-matches', (req, res) => res.json(global.liveMatches ? Array.from(global.liveMatches.values()) : []));
 
+app.post('/api/users/follow', async (req, res) => {
+  const { followerId, followingId } = req.body;
+
+  if (!isValidObjectId(followerId) || !isValidObjectId(followingId)) {
+    return res.status(400).json({ error: 'Geçersiz kullanıcı ID' });
+  }
+
+  if (String(followerId) === String(followingId)) {
+    return res.status(400).json({ error: 'Kullanıcı kendini takip edemez' });
+  }
+
+  try {
+    const existingFollow = await Follow.findOne({
+      follower: followerId,
+      following: followingId
+    });
+
+    if (existingFollow) {
+      await Follow.deleteOne({ _id: existingFollow._id });
+      return res.json({ success: true, isFollowing: false });
+    }
+
+    await Follow.create({
+      follower: followerId,
+      following: followingId
+    });
+
+    res.json({ success: true, isFollowing: true });
+  } catch (err) {
+    console.error('❌ Follow toggle hatası:', err);
+    res.status(500).json({ error: 'Takip durumu güncellenemedi' });
+  }
+});
+
+app.get('/api/users/:userId/following', async (req, res) => {
+  const { userId } = req.params;
+
+  if (!isValidObjectId(userId)) {
+    return res.status(400).json({ error: 'Geçersiz kullanıcı ID' });
+  }
+
+  try {
+    const following = await Follow.find({ follower: userId }).select('following');
+    res.json(following.map((item) => String(item.following)));
+  } catch (err) {
+    console.error('❌ Following listesi getirilemedi:', err);
+    res.status(500).json({ error: 'Takip edilen kullanıcılar getirilemedi' });
+  }
+});
+
 app.get('/api/users/:userId/history', async (req, res) => {
   const { userId } = req.params;
 
@@ -786,6 +872,8 @@ app.get('/api/users/:userId/history', async (req, res) => {
   }
 
   try {
+    console.log(`📜 Fetching match history for user: ${userId}`);
+
     const matches = await MatchHistory.find({
       $or: [{ user1: userId }, { user2: userId }]
     })
@@ -793,6 +881,21 @@ app.get('/api/users/:userId/history', async (req, res) => {
       .limit(20)
       .populate('user1', 'name avatar country countryFlag')
       .populate('user2', 'name avatar country countryFlag');
+
+    const partnerIds = matches
+      .map((match) => {
+        const isRequesterUser1 = String(match.user1?._id) === String(userId);
+        const partner = isRequesterUser1 ? match.user2 : match.user1;
+        return partner?._id ? String(partner._id) : null;
+      })
+      .filter(Boolean);
+
+    const followingLinks = await Follow.find({
+      follower: userId,
+      following: { $in: partnerIds }
+    }).select('following');
+
+    const followingSet = new Set(followingLinks.map((item) => String(item.following)));
 
     const history = matches.map((match) => {
       const isRequesterUser1 = String(match.user1?._id) === String(userId);
@@ -808,9 +911,13 @@ app.get('/api/users/:userId/history', async (req, res) => {
           avatar: partner.avatar || null,
           country: partner.country || null,
           countryFlag: partner.countryFlag || null
-        } : null
+        } : null,
+        isFollowing: partner ? followingSet.has(String(partner._id)) : false
       };
     });
+
+    console.log("Found raw match documents:", matches.length);
+    console.log("Found matches count:", history.length);
 
     res.json(history);
   } catch (err) {
