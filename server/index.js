@@ -460,6 +460,14 @@ io.on('connection', async (socket) => {
       return socket.emit('target_unavailable');
     }
 
+    if (isSocketBusy(targetSocketId) || String(targetDetails.status).toUpperCase() === 'BUSY') {
+      console.log("private_call_request -> target_is_busy: Target already in a live match or marked busy", {
+        targetSocketId,
+        targetStatus: targetDetails.status
+      });
+      return socket.emit('target_is_busy');
+    }
+
     if (!isValidObjectId(targetDetails.dbId)) {
       console.log("private_call_request -> target_unavailable: Target dbId invalid", {
         targetSocketId,
@@ -477,13 +485,13 @@ io.on('connection', async (socket) => {
         return socket.emit('target_unavailable');
       }
 
-      if (!callerUser || (callerUser.gems || 0) < 20) {
+      if (!callerUser || (callerUser.gems || 0) < 50) {
         console.log("private_call_request -> insufficient_gems", {
           callerId: finalCallerId,
           gems: callerUser ? callerUser.gems : null
         });
         return socket.emit('insufficient_gems', {
-          message: 'Private call için 20 Gem gerekli.'
+          message: 'Private call için 50 Gem gerekli.'
         });
       }
 
@@ -533,49 +541,74 @@ io.on('connection', async (socket) => {
       return io.to(callerSocketId).emit('target_unavailable');
     }
 
-    clearPendingPrivateCall(socket.id);
+    try {
+      let callerUser = isValidObjectId(callerDetails.dbId) ? await User.findById(callerDetails.dbId) : null;
+      if (!callerUser || (callerUser.gems || 0) < 50) {
+        console.log("private_call_accepted -> insufficient_gems", {
+          callerDbId: callerDetails.dbId,
+          gems: callerUser ? callerUser.gems : null
+        });
+        clearPendingPrivateCall(socket.id);
+        io.to(callerSocketId).emit('insufficient_gems', {
+          message: 'Private call için 50 Gem gerekli.'
+        });
+        return socket.emit('call_rejected');
+      }
 
-    globalQueue = globalQueue.filter((item) => item.id !== callerSocketId && item.id !== socket.id);
+      callerUser.gems -= 50;
+      await callerUser.save();
+      if (callerDetails) {
+        callerDetails.gems = callerUser.gems;
+      }
+      io.to(callerSocketId).emit('gems_updated', { gems: callerUser.gems });
 
-    const {
-      matchId,
-      initiatorDetails: callerMatchDetails,
-      partnerDetails: targetMatchDetails
-    } = createLiveMatchRecord({
-      socketId: callerSocketId,
-      partnerSocketId: socket.id,
-      initiatorCountry: normalizeCountry(callerDetails.country || 'UN'),
-      partnerCountry: normalizeCountry(targetDetails.country || 'UN')
-    });
+      clearPendingPrivateCall(socket.id);
 
-    console.log(`📞 Private call accepted: ${matchId}`);
+      globalQueue = globalQueue.filter((item) => item.id !== callerSocketId && item.id !== socket.id);
 
-    let callerUser = isValidObjectId(callerDetails.dbId) ? await User.findById(callerDetails.dbId) : null;
-    let targetUser = isValidObjectId(targetDetails.dbId) ? await User.findById(targetDetails.dbId) : null;
+      const {
+        matchId,
+        initiatorDetails: callerMatchDetails,
+        partnerDetails: targetMatchDetails
+      } = createLiveMatchRecord({
+        socketId: callerSocketId,
+        partnerSocketId: socket.id,
+        initiatorCountry: normalizeCountry(callerDetails.country || 'UN'),
+        partnerCountry: normalizeCountry(targetDetails.country || 'UN')
+      });
 
-    io.to(callerSocketId).emit('partner_found', {
-      partnerId: socket.id,
-      initiator: true,
-      country: normalizeCountry(targetDetails.country || 'UN'),
-      partnerGender: targetDetails.myGender || 'male',
-      partnerLikes: targetMatchDetails ? targetMatchDetails.likes : 0,
-      partnerName: targetUser ? targetUser.name : 'Stranger',
-      partnerAvatar: targetUser ? targetUser.avatar : null,
-      myNewGems: callerUser ? callerUser.gems : 0,
-      privateCall: true
-    });
+      console.log(`📞 Private call accepted: ${matchId}`);
 
-    io.to(socket.id).emit('partner_found', {
-      partnerId: callerSocketId,
-      initiator: false,
-      country: normalizeCountry(callerDetails.country || 'UN'),
-      partnerGender: callerDetails.myGender || 'male',
-      partnerLikes: callerMatchDetails ? callerMatchDetails.likes : 0,
-      partnerName: callerUser ? callerUser.name : 'Stranger',
-      partnerAvatar: callerUser ? callerUser.avatar : null,
-      myNewGems: targetUser ? targetUser.gems : 0,
-      privateCall: true
-    });
+      let targetUser = isValidObjectId(targetDetails.dbId) ? await User.findById(targetDetails.dbId) : null;
+
+      io.to(callerSocketId).emit('partner_found', {
+        partnerId: socket.id,
+        initiator: true,
+        country: normalizeCountry(targetDetails.country || 'UN'),
+        partnerGender: targetDetails.myGender || 'male',
+        partnerLikes: targetMatchDetails ? targetMatchDetails.likes : 0,
+        partnerName: targetUser ? targetUser.name : 'Stranger',
+        partnerAvatar: targetUser ? targetUser.avatar : null,
+        myNewGems: callerUser ? callerUser.gems : 0,
+        privateCall: true
+      });
+
+      io.to(socket.id).emit('partner_found', {
+        partnerId: callerSocketId,
+        initiator: false,
+        country: normalizeCountry(callerDetails.country || 'UN'),
+        partnerGender: callerDetails.myGender || 'male',
+        partnerLikes: callerMatchDetails ? callerMatchDetails.likes : 0,
+        partnerName: callerUser ? callerUser.name : 'Stranger',
+        partnerAvatar: callerUser ? callerUser.avatar : null,
+        myNewGems: targetUser ? targetUser.gems : 0,
+        privateCall: true
+      });
+    } catch (err) {
+      console.error('❌ Private call acceptance hatası:', err);
+      clearPendingPrivateCall(socket.id);
+      io.to(callerSocketId).emit('target_unavailable');
+    }
   });
 
   socket.on('private_call_rejected', ({ callerId }) => {
