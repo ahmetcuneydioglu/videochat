@@ -859,13 +859,28 @@ app.post('/api/users/follow', async (req, res) => {
 app.get('/api/users/:userId/following', async (req, res) => {
   const { userId } = req.params;
 
-  if (!isValidObjectId(userId)) {
-    return res.status(400).json({ error: 'Geçersiz kullanıcı ID' });
-  }
-
   try {
-    const following = await Follow.find({ follower: userId }).select('following');
-    res.json(following.map((item) => String(item.following)));
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: 'Geçersiz kullanıcı ID formatı' });
+    }
+
+    const followingRecords = await Follow.find({ follower: userId })
+      .populate('following', 'name avatar country countryFlag');
+
+    const followingUsers = followingRecords
+      .map((record) => record.following)
+      .filter(Boolean)
+      .map((user) => ({
+        id: user._id,
+        name: user.name || 'Stranger',
+        avatar: user.avatar || null,
+        country: user.country || null,
+        countryFlag: user.countryFlag || null,
+        isOnline: getConnectedSocketsByDbId(user._id).length > 0,
+        isFollowing: true
+      }));
+
+    res.json(followingUsers);
   } catch (err) {
     console.error('❌ Following listesi getirilemedi:', err);
     res.status(500).json({ error: 'Takip edilen kullanıcılar getirilemedi' });
