@@ -67,6 +67,7 @@ const userDetails = new Map();
 const pendingPrivateCalls = new Map();
 const connectedUsers = new Map();
 const socketToDbUser = new Map();
+const onlineUsers = new Map();
 
 if (!global.liveMatches) global.liveMatches = new Map();
 
@@ -157,6 +158,30 @@ const getConnectedSocketsByDbId = (dbId) =>
   connectedUsers.has(String(dbId)) ? [connectedUsers.get(String(dbId))] : [];
 const getDbIdBySocketId = (socketId) => socketToDbUser.get(socketId) || null;
 const isSocketBusy = (socketId) => activeMatches.has(socketId);
+async function notifyMatchedUsersStatusChange(userId, isOnline) {
+  if (!isValidObjectId(userId)) return;
+
+  try {
+    const [asUser1, asUser2] = await Promise.all([
+      MatchHistory.distinct('user2', { user1: userId }),
+      MatchHistory.distinct('user1', { user2: userId })
+    ]);
+
+    const matchedUserIds = [...new Set([...asUser1, ...asUser2].map((id) => String(id)))];
+
+    matchedUserIds.forEach((matchedUserId) => {
+      const matchedSocketId = connectedUsers.get(matchedUserId);
+      if (!matchedSocketId) return;
+
+      io.to(matchedSocketId).emit('user_status_changed', {
+        userId: String(userId),
+        isOnline
+      });
+    });
+  } catch (err) {
+    console.error('❌ Matched user status broadcast error:', err);
+  }
+}
 const clearPendingPrivateCall = (socketId) => {
   const pendingCall = pendingPrivateCalls.get(socketId);
   if (!pendingCall) return null;
@@ -321,6 +346,8 @@ io.on('connection', async (socket) => {
   if (isValidObjectId(dbUserId)) {
     connectedUsers.set(String(dbUserId), socket.id);
     socketToDbUser.set(socket.id, String(dbUserId));
+    onlineUsers.set(String(dbUserId), socket.id);
+    notifyMatchedUsersStatusChange(String(dbUserId), true);
   }
 
   socket.on('register_user', ({ dbUserId: registeredDbUserId, userId }) => {
@@ -333,11 +360,38 @@ io.on('connection', async (socket) => {
 
     connectedUsers.set(String(resolvedDbUserId), socket.id);
     socketToDbUser.set(socket.id, String(resolvedDbUserId));
+    onlineUsers.set(String(resolvedDbUserId), socket.id);
+    notifyMatchedUsersStatusChange(String(resolvedDbUserId), true);
 
     const existingDetails = userDetails.get(socket.id);
     if (existingDetails) {
       existingDetails.dbId = String(resolvedDbUserId);
       existingDetails.isRegistered = true;
+    }
+  });
+
+  socket.on('get_user_status', async (requestedUserIds = [], callback) => {
+    try {
+      const statuses = requestedUserIds
+        .map((requestedUserId) => String(requestedUserId))
+        .map((requestedUserId) => ({
+          userId: requestedUserId,
+          isOnline: onlineUsers.has(String(requestedUserId))
+        }));
+
+      if (typeof callback === 'function') {
+        return callback(statuses);
+      }
+
+      socket.emit('user_status_response', statuses);
+    } catch (err) {
+      console.error('❌ get_user_status error:', err);
+
+      if (typeof callback === 'function') {
+        return callback([]);
+      }
+
+      socket.emit('user_status_response', []);
     }
   });
 
@@ -913,6 +967,10 @@ io.on('connection', async (socket) => {
     const disconnectedDbId = getDbIdBySocketId(socket.id);
     if (disconnectedDbId && connectedUsers.get(disconnectedDbId) === socket.id) {
       connectedUsers.delete(disconnectedDbId);
+    }
+    if (disconnectedDbId && onlineUsers.get(disconnectedDbId) === socket.id) {
+      onlineUsers.delete(disconnectedDbId);
+      notifyMatchedUsersStatusChange(disconnectedDbId, false);
     }
     socketToDbUser.delete(socket.id);
     await saveMatchHistoryIfEligible(socket.id);
