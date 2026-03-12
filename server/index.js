@@ -621,6 +621,24 @@ io.on('connection', async (socket) => {
     io.to(callerSocketId).emit('call_rejected');
   });
 
+  socket.on('cancel_private_call', ({ targetId, callerId }) => {
+    console.log(`[Private Call] Cancelled by ${callerId} for ${targetId}`);
+
+    const targetSocketId =
+      connectedUsers.get(String(targetId)) ||
+      getConnectedSocketsByDbId(String(targetId))[0];
+
+    if (!targetSocketId) {
+      return;
+    }
+
+    clearPendingPrivateCall(socket.id);
+
+    io.to(targetSocketId).emit('private_call_cancelled', {
+      callerId
+    });
+  });
+
   // --- EŞLEŞME (MATCH) MANTIĞI DÜZELTİLDİ ---
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
       
