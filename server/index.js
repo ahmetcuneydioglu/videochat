@@ -158,7 +158,8 @@ const getConnectedSocketsByDbId = (dbId) =>
   connectedUsers.has(String(dbId)) ? [connectedUsers.get(String(dbId))] : [];
 const getDbIdBySocketId = (socketId) => socketToDbUser.get(socketId) || null;
 const isSocketBusy = (socketId) => activeMatches.has(socketId);
-async function notifyMatchedUsersStatusChange(userId, isOnline) {
+const getUserPresenceStatus = (userId) => onlineUsers.get(String(userId))?.status || 'offline';
+async function notifyMatchedUsersStatusChange(userId, status) {
   if (!isValidObjectId(userId)) return;
 
   try {
@@ -175,12 +176,38 @@ async function notifyMatchedUsersStatusChange(userId, isOnline) {
 
       io.to(matchedSocketId).emit('user_status_changed', {
         userId: String(userId),
-        isOnline
+        status
       });
     });
   } catch (err) {
     console.error('❌ Matched user status broadcast error:', err);
   }
+}
+async function setUserPresenceStatus(userId, status, socketId = null) {
+  if (!isValidObjectId(userId)) return;
+
+  const currentEntry = onlineUsers.get(String(userId));
+  if (!currentEntry) {
+    const resolvedSocketId = socketId || connectedUsers.get(String(userId));
+    if (!resolvedSocketId) return;
+    onlineUsers.set(String(userId), { socketId: resolvedSocketId, status });
+    return notifyMatchedUsersStatusChange(String(userId), status);
+  }
+
+  const nextSocketId = socketId || currentEntry.socketId;
+  const statusChanged = currentEntry.status !== status;
+  onlineUsers.set(String(userId), { socketId: nextSocketId, status });
+
+  if (statusChanged) {
+    await notifyMatchedUsersStatusChange(String(userId), status);
+  }
+}
+async function markUsersOnlineAfterCall(...userIds) {
+  await Promise.all(
+    userIds
+      .filter((userId) => isValidObjectId(userId))
+      .map((userId) => setUserPresenceStatus(String(userId), 'online'))
+  );
 }
 const clearPendingPrivateCall = (socketId) => {
   const pendingCall = pendingPrivateCalls.get(socketId);
@@ -346,8 +373,7 @@ io.on('connection', async (socket) => {
   if (isValidObjectId(dbUserId)) {
     connectedUsers.set(String(dbUserId), socket.id);
     socketToDbUser.set(socket.id, String(dbUserId));
-    onlineUsers.set(String(dbUserId), socket.id);
-    notifyMatchedUsersStatusChange(String(dbUserId), true);
+    setUserPresenceStatus(String(dbUserId), 'online', socket.id);
   }
 
   socket.on('register_user', ({ dbUserId: registeredDbUserId, userId }) => {
@@ -360,8 +386,7 @@ io.on('connection', async (socket) => {
 
     connectedUsers.set(String(resolvedDbUserId), socket.id);
     socketToDbUser.set(socket.id, String(resolvedDbUserId));
-    onlineUsers.set(String(resolvedDbUserId), socket.id);
-    notifyMatchedUsersStatusChange(String(resolvedDbUserId), true);
+    setUserPresenceStatus(String(resolvedDbUserId), 'online', socket.id);
 
     const existingDetails = userDetails.get(socket.id);
     if (existingDetails) {
@@ -376,7 +401,7 @@ io.on('connection', async (socket) => {
         .map((requestedUserId) => String(requestedUserId))
         .map((requestedUserId) => ({
           userId: requestedUserId,
-          isOnline: onlineUsers.has(String(requestedUserId))
+          status: getUserPresenceStatus(requestedUserId)
         }));
 
       if (typeof callback === 'function') {
@@ -631,6 +656,11 @@ io.on('connection', async (socket) => {
         partnerCountry: normalizeCountry(targetDetails.country || 'UN')
       });
 
+      await Promise.all([
+        setUserPresenceStatus(String(callerDetails.dbId), 'busy', callerSocketId),
+        setUserPresenceStatus(String(targetDetails.dbId), 'busy', socket.id)
+      ]);
+
       console.log(`📞 Private call accepted: ${matchId}`);
 
       let targetUser = isValidObjectId(targetDetails.dbId) ? await User.findById(targetDetails.dbId) : null;
@@ -691,6 +721,16 @@ io.on('connection', async (socket) => {
     io.to(targetSocketId).emit('private_call_cancelled', {
       callerId
     });
+  });
+
+  socket.on('call_ended', async () => {
+    const myDbId = getDbIdBySocketId(socket.id) || userDetails.get(socket.id)?.dbId;
+    const partnerSocketId = activeMatches.get(socket.id);
+    const partnerDbId = partnerSocketId
+      ? getDbIdBySocketId(partnerSocketId) || userDetails.get(partnerSocketId)?.dbId
+      : null;
+
+    await markUsersOnlineAfterCall(myDbId, partnerDbId);
   });
 
   // --- EŞLEŞME (MATCH) MANTIĞI DÜZELTİLDİ ---
@@ -833,6 +873,12 @@ io.on('connection', async (socket) => {
             initiatorCountry: myCountryCode,
             partnerCountry: partner.countryCode
           });
+
+          await Promise.all([
+            setUserPresenceStatus(String(myDetails?.dbId || u.dbId), 'busy', socket.id),
+            setUserPresenceStatus(String(pDetails?.dbId || partner.dbId), 'busy', partner.id)
+          ]);
+
           console.log(`🎯 Live match created: ${matchId}`, {
             user1DbId: myDetails?.dbId || u.dbId || null,
             user2DbId: pDetails?.dbId || partner.dbId || null
@@ -899,6 +945,7 @@ io.on('connection', async (socket) => {
       }
 
       await saveMatchHistoryIfEligible(socket.id);
+      await markUsersOnlineAfterCall(myDetails?.dbId, pDetails?.dbId);
 
       console.log(`⏭️ [${socket.id.slice(0,6)}] NEXT dedi.`);
       io.to(partnerId).emit('partner_left_auto_next');
@@ -911,13 +958,15 @@ io.on('connection', async (socket) => {
     }
   });
 
-  socket.on('stop_search', () => {
+  socket.on('stop_search', async () => {
     console.log(`⏹️ [${socket.id.slice(0,6)}] Aramayı tamamen durdurdu.`);
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
     const u = userDetails.get(socket.id);
     if (u) u.status = 'IDLE';
     const partnerId = activeMatches.get(socket.id);
     if (partnerId) {
+        const partnerDetails = userDetails.get(partnerId);
+        await markUsersOnlineAfterCall(u?.dbId, partnerDetails?.dbId);
         io.to(partnerId).emit('partner_left_auto_next');
         activeMatches.delete(socket.id);
         activeMatches.delete(partnerId);
@@ -965,12 +1014,17 @@ io.on('connection', async (socket) => {
       io.to(pendingCall.partnerSocketId).emit('target_unavailable');
     }
     const disconnectedDbId = getDbIdBySocketId(socket.id);
+    const partnerSocketId = activeMatches.get(socket.id);
+    const partnerDbId = partnerSocketId
+      ? getDbIdBySocketId(partnerSocketId) || userDetails.get(partnerSocketId)?.dbId
+      : null;
+    await markUsersOnlineAfterCall(partnerDbId);
     if (disconnectedDbId && connectedUsers.get(disconnectedDbId) === socket.id) {
       connectedUsers.delete(disconnectedDbId);
     }
-    if (disconnectedDbId && onlineUsers.get(disconnectedDbId) === socket.id) {
+    if (disconnectedDbId && onlineUsers.get(disconnectedDbId)?.socketId === socket.id) {
       onlineUsers.delete(disconnectedDbId);
-      notifyMatchedUsersStatusChange(disconnectedDbId, false);
+      notifyMatchedUsersStatusChange(disconnectedDbId, 'offline');
     }
     socketToDbUser.delete(socket.id);
     await saveMatchHistoryIfEligible(socket.id);
