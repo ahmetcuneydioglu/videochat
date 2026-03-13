@@ -1259,6 +1259,10 @@ app.post('/api/users/follow', async (req, res) => {
 
     if (existingFollow) {
       await Follow.deleteOne({ _id: existingFollow._id });
+      await Promise.all([
+        User.findByIdAndUpdate(followerObjectId, { $inc: { followingCount: -1 } }),
+        User.findByIdAndUpdate(followingObjectId, { $inc: { followersCount: -1 } })
+      ]);
       return res.json({ message: "Unfollowed", isFollowing: false });
     }
 
@@ -1267,10 +1271,52 @@ app.post('/api/users/follow', async (req, res) => {
       following: followingObjectId
     });
 
+    await Promise.all([
+      User.findByIdAndUpdate(followerObjectId, { $inc: { followingCount: 1 } }),
+      User.findByIdAndUpdate(followingObjectId, { $inc: { followersCount: 1 } })
+    ]);
+
     return res.json({ message: "Followed", isFollowing: true });
   } catch (err) {
     console.error('❌ Follow toggle hatası:', err);
     return res.status(500).json({ error: 'Takip durumu güncellenemedi' });
+  }
+});
+
+app.post('/api/users/update-profile', async (req, res) => {
+  const { dbUserId, bio, interests, photos } = req.body;
+
+  if (!isValidObjectId(dbUserId)) {
+    return res.status(400).json({ error: 'Geçersiz kullanıcı ID formatı' });
+  }
+
+  try {
+    const sanitizedPhotos = Array.isArray(photos)
+      ? photos.filter((photo) => typeof photo === 'string' && photo.trim()).slice(0, 3)
+      : [];
+
+    const sanitizedInterests = Array.isArray(interests)
+      ? interests.filter((interest) => typeof interest === 'string' && interest.trim())
+      : [];
+
+    const updatedUser = await User.findByIdAndUpdate(
+      dbUserId,
+      {
+        bio: typeof bio === 'string' ? bio.slice(0, 150) : '',
+        interests: sanitizedInterests,
+        photos: sanitizedPhotos
+      },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+
+    return res.json(updatedUser);
+  } catch (err) {
+    console.error('❌ Profil güncelleme hatası:', err);
+    return res.status(500).json({ error: 'Profil güncellenemedi' });
   }
 });
 
