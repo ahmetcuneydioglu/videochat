@@ -32,17 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        style={{ 
-          position: 'fixed', 
-          width: '100%', 
-          height: '100%', 
-          overflow: 'hidden',
-          margin: 0,
-          padding: 0 
-        }}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
       </body>
     </html>

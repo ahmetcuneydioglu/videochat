@@ -68,8 +68,8 @@ const sections = [
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="min-h-screen bg-white text-neutral-900">
-      <div className="mx-auto max-w-4xl px-6 py-10 sm:px-8 lg:px-10">
+    <main className="min-h-screen overflow-y-auto bg-white text-neutral-900">
+      <div className="max-w-4xl mx-auto px-6 py-12">
         <div className="mb-10 flex items-center justify-between border-b border-neutral-200 pb-5">
           <Link
             href="/"
