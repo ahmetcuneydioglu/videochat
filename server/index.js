@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const http = require('http'); 
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
@@ -8,15 +9,22 @@ const { OAuth2Client } = require('google-auth-library');
 const User = require('./models/User');
 const MatchHistory = require('./models/MatchHistory');
 const Follow = require('./models/Follow');
+const Purchase = require('./models/Purchase');
+const { signAccessToken } = require('./utils/jwt');
+const { requireAuth, requireSelfOrAdmin } = require('./middlewares/auth');
+const { requireAdmin } = require('./middlewares/admin');
+const { authRateLimit, userActionRateLimit, adminRateLimit } = require('./middlewares/rateLimit');
+const { socketAuthMiddleware } = require('./middlewares/socketAuth');
+const { consumeSocketEvent } = require('./utils/socketRateLimiter');
+const { followSchema, updateProfileSchema, getUserStatusSchema } = require('./utils/validators');
+const { verifyPurchaseWithStore } = require('./services/purchaseVerification');
+const { ALLOWED_ORIGINS, GOOGLE_CLIENT_IDS, MONGODB_URI, PORT, NODE_ENV } = require('./config/env');
 
 const app = express();
 
-const allowedOrigins = [
-  "https://www.omegpt.com", 
-  "https://omegpt.com", 
-  "http://localhost:3000"
-];
+const allowedOrigins = ALLOWED_ORIGINS;
 
+app.use(helmet());
 app.use(cors({ 
   origin: allowedOrigins, 
   credentials: true 
@@ -25,7 +33,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 
 app.use((req, res, next) => {
-    if (req.header('x-forwarded-proto') !== 'https' && process.env.NODE_ENV === 'production') {
+    if (req.header('x-forwarded-proto') !== 'https' && NODE_ENV === 'production') {
         res.redirect(`https://${req.header('host')}${req.url}`);
     } else {
         next();
@@ -34,7 +42,6 @@ app.use((req, res, next) => {
 
 const server = http.createServer(app);
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ahmetcnd:Ahmet263271@videochat.vok6vud.mongodb.net/videochat?retryWrites=true&w=majority';
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('✅ MongoDB Bağlantısı Başarılı'))
   .catch(err => console.error('❌ MongoDB Bağlantı Hatası:', err));
@@ -71,18 +78,17 @@ const onlineUsers = new Map();
 
 if (!global.liveMatches) global.liveMatches = new Map();
 
-const client = new OAuth2Client("18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com");
+const client = new OAuth2Client();
 
-app.post('/api/auth/social-login', async (req, res) => {
+app.post('/api/auth/social-login', authRateLimit, async (req, res) => {
   const { token } = req.body;
   try {
+    if (!token || !GOOGLE_CLIENT_IDS.length) {
+      return res.status(400).json({ error: 'Eksik doğrulama yapılandırması' });
+    }
     const ticket = await client.verifyIdToken({ 
       idToken: token, 
-      audience: [
-        "18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com", // Web (omegpt.com)
-        "18397104529-nkekeeding26dqscnl6tgg8ejanhn5c0.apps.googleusercontent.com",  // iOS (Mobil Uygulama)
-        "18397104529-ped0jv9ovoj8mq6c1e3vogl3u6dv27eb.apps.googleusercontent.com"  //İOS NATİVE
-      ] 
+      audience: GOOGLE_CLIENT_IDS
     });
     
     const payload = ticket.getPayload();
@@ -114,8 +120,9 @@ app.post('/api/auth/social-login', async (req, res) => {
     user.lastLoginDate = new Date();
     user.lastSeen = new Date();
     await user.save();
+    const accessToken = signAccessToken(user);
     
-    res.json(user);
+    res.json({ user, accessToken });
     
   } catch (err) {
     console.error("❌ Google Login Doğrulama Hatası:", err); 
@@ -131,6 +138,7 @@ const io = new Server(server, {
   },
   transports: ["polling", "websocket"]
 });
+io.use(socketAuthMiddleware);
 
 const getMatchId = (id1, id2) => [id1, id2].sort().join('_');
 const normalizeCountry = (code) => {
@@ -340,22 +348,20 @@ io.on('connection', async (socket) => {
 
   console.log(`👤 Yeni Bağlantı: ${socket.id.slice(0,6)}... (IP: ${userIP}, Ülke: ${countryCode})`);
 
-  const dbUserId = socket.handshake.query.dbUserId; 
+  const dbUserId = socket.data.auth?.userId;
   let currentLikes = 0; let isRegistered = false;
   let connectedUserName = 'Someone you follow';
 
-  if (dbUserId && mongoose.Types.ObjectId.isValid(dbUserId)) {
-    const dbUser = await User.findById(dbUserId);
-    if (dbUser) {
-      dbUser.country = countryCode;
-      dbUser.countryFlag = countryFlag;
-      dbUser.lastSeen = new Date();
-      await dbUser.save();
-      currentLikes = dbUser.likes;
-      isRegistered = true;
-      connectedUserName = dbUser.name || connectedUserName;
-      socket.emit('update_my_likes', { likes: dbUser.likes });
-    }
+  const dbUser = socket.data.user;
+  if (dbUser && mongoose.Types.ObjectId.isValid(dbUserId)) {
+    dbUser.country = countryCode;
+    dbUser.countryFlag = countryFlag;
+    dbUser.lastSeen = new Date();
+    await dbUser.save();
+    currentLikes = dbUser.likes;
+    isRegistered = true;
+    connectedUserName = dbUser.name || connectedUserName;
+    socket.emit('update_my_likes', { likes: dbUser.likes });
   }
 
   userDetails.set(socket.id, {
@@ -376,28 +382,10 @@ io.on('connection', async (socket) => {
     setUserPresenceStatus(String(dbUserId), 'online', socket.id);
   }
 
-  socket.on('register_user', ({ dbUserId: registeredDbUserId, userId }) => {
-    const resolvedDbUserId = registeredDbUserId || userId;
-    console.log('register_user payload:', { registeredDbUserId, userId, resolvedDbUserId, socketId: socket.id });
-
-    if (!isValidObjectId(resolvedDbUserId)) {
-      return;
-    }
-
-    connectedUsers.set(String(resolvedDbUserId), socket.id);
-    socketToDbUser.set(socket.id, String(resolvedDbUserId));
-    setUserPresenceStatus(String(resolvedDbUserId), 'online', socket.id);
-
-    const existingDetails = userDetails.get(socket.id);
-    if (existingDetails) {
-      existingDetails.dbId = String(resolvedDbUserId);
-      existingDetails.isRegistered = true;
-    }
-  });
-
   socket.on('get_user_status', async (requestedUserIds = [], callback) => {
     try {
-      const statuses = requestedUserIds
+      const validatedUserIds = getUserStatusSchema.parse(requestedUserIds);
+      const statuses = validatedUserIds
         .map((requestedUserId) => String(requestedUserId))
         .map((requestedUserId) => ({
           userId: requestedUserId,
@@ -478,6 +466,9 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('private_call_request', async ({ callerId, targetUserId }) => {
+    if (!consumeSocketEvent(socket, 'private_call_request', { limit: 5, windowMs: 60_000 })) {
+      return socket.emit('error_message', { type: 'RATE_LIMIT', message: 'Çok fazla özel arama isteği gönderildi.' });
+    }
     const me = userDetails.get(socket.id);
     const normalizedCallerId = callerId ? String(callerId) : null;
     const normalizedTargetUserId = targetUserId ? String(targetUserId) : null;
@@ -735,6 +726,9 @@ io.on('connection', async (socket) => {
 
   // --- EŞLEŞME (MATCH) MANTIĞI DÜZELTİLDİ ---
   socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
+      if (!consumeSocketEvent(socket, 'find_partner', { limit: 12, windowMs: 60_000 })) {
+        return socket.emit('error_message', { type: 'RATE_LIMIT', message: 'Çok sık eşleşme aranıyor.' });
+      }
       
       const normalizedSelectedCountry = normalizeCountry(selectedCountry || 'all');
       const normalizedSearchGender = String(searchGender || 'all');
@@ -979,10 +973,14 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('chat_message', async (data) => {
+    if (!consumeSocketEvent(socket, 'chat_message', { limit: 30, windowMs: 60_000 })) {
+        return socket.emit('error_message', { type: 'RATE_LIMIT', message: 'Çok fazla mesaj gönderildi.' });
+    }
     const { to, text } = data;
     const partnerId = getVerifiedPartnerId(socket, to);
+    const sanitizedText = typeof text === 'string' ? text.trim().slice(0, 500) : '';
     
-    if (!partnerId || !text) {
+    if (!partnerId || !sanitizedText) {
         console.log(`⚠️ Mesaj reddedildi: [${socket.id}] -> [${to || 'Bilinmiyor'}]`);
         return;
     }
@@ -991,7 +989,7 @@ io.on('connection', async (socket) => {
         const newMessage = new Message({
             senderId: socket.id,
             receiverId: partnerId,
-            text: text,
+            text: sanitizedText,
             timestamp: new Date()
         });
         await newMessage.save();
@@ -999,7 +997,7 @@ io.on('connection', async (socket) => {
         console.log(`💬 Mesaj iletiliyor: [${socket.id}] -> [${partnerId}]`);
         io.to(partnerId).emit('chat_message', { 
             senderId: socket.id, 
-            text: text, 
+            text: sanitizedText, 
             timestamp: newMessage.timestamp 
         });
     } catch (err) {
@@ -1083,8 +1081,8 @@ const isYesterday = (d1, d2) => {
   return isSameDay(yesterday, d2);
 };
 
-app.post('/api/store/status', async (req, res) => {
-  const { dbUserId } = req.body;
+app.post('/api/store/status', requireAuth, userActionRateLimit, async (req, res) => {
+  const dbUserId = req.auth.userId;
   if (!dbUserId || !mongoose.Types.ObjectId.isValid(dbUserId)) return res.status(400).json({error: "Geçersiz ID"});
   
   try {
@@ -1124,8 +1122,8 @@ app.post('/api/store/status', async (req, res) => {
   }
 });
 
-app.post('/api/store/claim', async (req, res) => {
-  const { dbUserId } = req.body;
+app.post('/api/store/claim', requireAuth, userActionRateLimit, async (req, res) => {
+  const dbUserId = req.auth.userId;
   if (!dbUserId || !mongoose.Types.ObjectId.isValid(dbUserId)) return res.status(400).json({error: "Geçersiz ID"});
 
   try {
@@ -1176,27 +1174,56 @@ const GEM_PACKAGES = {
 };
 
 // 2. Satın Alma Doğrulama API'sı
-app.post('/api/store/verify-purchase', async (req, res) => {
-  const { dbUserId, productId, transactionId } = req.body;
+app.post('/api/store/verify-purchase', requireAuth, userActionRateLimit, async (req, res) => {
+  const { productId, transactionId, receiptData, platform } = req.body;
+  const dbUserId = req.auth.userId;
 
-  console.log(`🛒 Satın Alma Talebi: User:${dbUserId}, Product:${productId}`);
+  console.log(`🛒 Satın Alma Talebi: User:${dbUserId}, Product:${productId}, Tx:${transactionId}, Platform:${platform}`);
 
   try {
-    // Ürün ID'sini kontrol et
     const gemAmount = GEM_PACKAGES[productId];
     if (!gemAmount) {
       return res.status(400).json({ error: "Geçersiz Product ID!" });
     }
 
-    // Kullanıcıyı bul ve taşlarını güncelle
+    if (!transactionId || typeof transactionId !== 'string' || !receiptData || typeof receiptData !== 'string' || !platform) {
+      return res.status(400).json({ error: "Geçersiz işlem bilgisi." });
+    }
+
+    const alreadyProcessed = await Purchase.findOne({ transactionId });
+    if (alreadyProcessed) {
+      return res.status(409).json({ error: 'Bu satın alma daha önce işlendi.' });
+    }
+
+    const verification = await verifyPurchaseWithStore({
+      platform,
+      productId,
+      transactionId,
+      receiptData,
+    });
+
+    if (!verification.isValid) {
+      return res.status(400).json({
+        error: 'Satın alma doğrulanamadı.',
+        reason: verification.reason || 'UNKNOWN_PURCHASE_VERIFICATION_ERROR',
+      });
+    }
+
     const user = await User.findById(dbUserId);
     if (!user) {
       return res.status(404).json({ error: "Kullanıcı veritabanında bulunamadı." });
     }
 
-    // Mevcut taşlarına yenisini ekle
     user.gems = (user.gems || 0) + gemAmount;
     await user.save();
+    await Purchase.create({
+      userId: user._id,
+      platform,
+      productId,
+      transactionId,
+      creditedAmount: gemAmount,
+      rawPayload: verification.rawPayload || { platform, productId, transactionId },
+    });
 
     console.log(`✅ Başarılı: ${user.name} kullanıcısına ${gemAmount} taş eklendi.`);
 
@@ -1216,28 +1243,33 @@ app.post('/api/store/verify-purchase', async (req, res) => {
 // --------------------------------------------------
 
 // --- ADMIN API ---
-app.get('/api/admin/active-users', (req, res) => res.json(Array.from(userDetails.values())));
-app.get('/api/reports', async (req, res) => res.json(await Report.find().sort({ date: -1 }).limit(50)));
-app.delete('/api/reports/:id', async (req, res) => { await Report.findByIdAndDelete(req.params.id); res.json({ success: true }); });
+app.get('/api/admin/active-users', requireAuth, requireAdmin, adminRateLimit, (req, res) => res.json(Array.from(userDetails.values())));
+app.get('/api/reports', requireAuth, requireAdmin, adminRateLimit, async (req, res) => res.json(await Report.find().sort({ date: -1 }).limit(50)));
+app.delete('/api/reports/:id', requireAuth, requireAdmin, adminRateLimit, async (req, res) => { await Report.findByIdAndDelete(req.params.id); res.json({ success: true }); });
 
-app.get('/api/bans', async (req, res) => {
+app.get('/api/bans', requireAuth, requireAdmin, adminRateLimit, async (req, res) => {
   const activeBans = await Ban.find({ expireAt: { $gt: new Date() } });
   res.json(activeBans);
 });
 
-app.delete('/api/bans/:ip', async (req, res) => { await Ban.findOneAndDelete({ ip: req.params.ip }); res.json({ success: true }); });
-app.get('/api/admin/stats', async (req, res) => {
+app.delete('/api/bans/:ip', requireAuth, requireAdmin, adminRateLimit, async (req, res) => { await Ban.findOneAndDelete({ ip: req.params.ip }); res.json({ success: true }); });
+app.get('/api/admin/stats', requireAuth, requireAdmin, adminRateLimit, async (req, res) => {
   const totalActiveBans = await Ban.countDocuments({ expireAt: { $gt: new Date() } });
   res.json({ activeUsers: userDetails.size, totalBans: totalActiveBans, pendingReports: await Report.countDocuments(), totalMatchesToday: 0 });
 });
-app.get('/api/admin/active-matches', (req, res) => res.json(global.liveMatches ? Array.from(global.liveMatches.values()) : []));
+app.get('/api/admin/active-matches', requireAuth, requireAdmin, adminRateLimit, (req, res) => res.json(global.liveMatches ? Array.from(global.liveMatches.values()) : []));
 
-app.post('/api/users/follow', async (req, res) => {
+app.post('/api/users/follow', requireAuth, userActionRateLimit, async (req, res) => {
   console.log('FOLLOW req.body:', req.body);
 
-  const { userId, followingId } = req.body;
-
   try {
+    const parsed = followSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Geçersiz takip isteği' });
+    }
+
+    const { followingId } = parsed.data;
+    const userId = req.auth.userId;
     if (
       !mongoose.Types.ObjectId.isValid(userId) ||
       !mongoose.Types.ObjectId.isValid(followingId)
@@ -1283,33 +1315,34 @@ app.post('/api/users/follow', async (req, res) => {
   }
 });
 
-app.post('/api/users/update-profile', async (req, res) => {
-  const { dbUserId, userId, name, avatarBase64, bio, interests, photos } = req.body;
-  const resolvedId = dbUserId || userId;
-
-  if (!isValidObjectId(resolvedId)) {
-    return res.status(400).json({ error: 'Geçersiz kullanıcı ID formatı' });
-  }
+app.post('/api/users/update-profile', requireAuth, userActionRateLimit, async (req, res) => {
+  const resolvedId = req.auth.userId;
 
   try {
+    const parsedResult = updateProfileSchema.safeParse(req.body);
+    if (!parsedResult.success) {
+      return res.status(400).json({ error: 'Geçersiz profil verisi' });
+    }
+
+    const parsed = parsedResult.data;
     const updateData = {};
 
-    if (typeof name === 'string' && name.trim()) {
-      updateData.name = name.trim().slice(0, 40);
+    if (typeof parsed.name === 'string' && parsed.name.trim()) {
+      updateData.name = parsed.name.trim().slice(0, 40);
     }
-    if (typeof bio === 'string') {
-      updateData.bio = bio.slice(0, 150);
+    if (typeof parsed.bio === 'string') {
+      updateData.bio = parsed.bio.slice(0, 150);
     }
-    if (Array.isArray(interests)) {
-      updateData.interests = interests.filter((i) => typeof i === 'string' && i.trim());
+    if (Array.isArray(parsed.interests)) {
+      updateData.interests = parsed.interests;
     }
-    if (Array.isArray(photos)) {
-      updateData.photos = photos.filter((p) => typeof p === 'string' && p.trim()).slice(0, 3);
+    if (Array.isArray(parsed.photos)) {
+      updateData.photos = parsed.photos;
     }
-    if (typeof avatarBase64 === 'string' && avatarBase64.length > 0) {
-      updateData.avatar = avatarBase64.startsWith('data:image')
-        ? avatarBase64
-        : `data:image/jpeg;base64,${avatarBase64}`;
+    if (typeof parsed.avatarBase64 === 'string' && parsed.avatarBase64.length > 0) {
+      updateData.avatar = parsed.avatarBase64.startsWith('data:image')
+        ? parsed.avatarBase64
+        : `data:image/jpeg;base64,${parsed.avatarBase64}`;
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -1330,7 +1363,7 @@ app.post('/api/users/update-profile', async (req, res) => {
 });
 
 
-app.get('/api/users/:userId/following', async (req, res) => {
+app.get('/api/users/:userId/following', requireAuth, requireSelfOrAdmin('params', 'userId'), userActionRateLimit, async (req, res) => {
   const { userId } = req.params;
 
   try {
@@ -1361,7 +1394,7 @@ app.get('/api/users/:userId/following', async (req, res) => {
   }
 });
 
-app.get('/api/users/:userId/history', async (req, res) => {
+app.get('/api/users/:userId/history', requireAuth, requireSelfOrAdmin('params', 'userId'), userActionRateLimit, async (req, res) => {
   const { userId } = req.params;
 
   if (!isValidObjectId(userId)) {
@@ -1423,7 +1456,7 @@ app.get('/api/users/:userId/history', async (req, res) => {
   }
 });
 
-app.post('/api/ban-user', async (req, res) => {
+app.post('/api/ban-user', requireAuth, requireAdmin, adminRateLimit, async (req, res) => {
   const { ip, reportedId, reason } = req.body;
   
   try {
@@ -1465,14 +1498,14 @@ app.post('/api/ban-user', async (req, res) => {
 });
 
 
-app.post('/api/admin/kill-match', (req, res) => {
+app.post('/api/admin/kill-match', requireAuth, requireAdmin, adminRateLimit, (req, res) => {
     const { matchId, user1Id, user2Id } = req.body;
     io.to(user1Id).emit('partner_left_auto_next'); io.to(user2Id).emit('partner_left_auto_next');
     if (global.liveMatches) global.liveMatches.delete(matchId);
     res.json({ success: true });
 });
 
-app.get('/api/admin/all-users', async (req, res) => {
+app.get('/api/admin/all-users', requireAuth, requireAdmin, adminRateLimit, async (req, res) => {
   try {
     const users = await User.find().sort({ trustScore: 1, createdAt: -1 });
     res.json(users);
@@ -1481,7 +1514,7 @@ app.get('/api/admin/all-users', async (req, res) => {
   }
 });
 
-app.post('/api/admin/update-user', async (req, res) => {
+app.post('/api/admin/update-user', requireAuth, requireAdmin, adminRateLimit, async (req, res) => {
   const { userId, updateData } = req.body;
   try {
     await User.findByIdAndUpdate(userId, updateData);
@@ -1512,5 +1545,4 @@ async function updateTrustScore(userId, change) {
   }
 }
 
-const PORT = process.env.PORT || 5001;
 server.listen(PORT, "0.0.0.0", () => console.log(`🚀 Sunucu ${PORT} portunda yayında.`));

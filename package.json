@@ -14,8 +14,11 @@
     "cors": "^2.8.6",
     "countries-list": "^3.2.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.3.1",
     "geoip-lite": "^1.4.10",
     "google-auth-library": "^10.5.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.563.0",
     "mongoose": "^9.1.5",
     "next": "16.1.6",
@@ -23,7 +26,8 @@
     "react-dom": "19.2.3",
     "simple-peer": "^9.11.1",
     "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
