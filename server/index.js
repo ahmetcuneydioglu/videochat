@@ -1284,30 +1284,39 @@ app.post('/api/users/follow', async (req, res) => {
 });
 
 app.post('/api/users/update-profile', async (req, res) => {
-  const { dbUserId, bio, interests, photos } = req.body;
+  const { dbUserId, userId, name, avatarBase64, bio, interests, photos } = req.body;
+  const resolvedId = dbUserId || userId;
 
-  if (!isValidObjectId(dbUserId)) {
+  if (!isValidObjectId(resolvedId)) {
     return res.status(400).json({ error: 'Geçersiz kullanıcı ID formatı' });
   }
 
   try {
-    const sanitizedPhotos = Array.isArray(photos)
-      ? photos.filter((photo) => typeof photo === 'string' && photo.trim()).slice(0, 3)
-      : [];
+    const updateData = {};
 
-    const sanitizedInterests = Array.isArray(interests)
-      ? interests.filter((interest) => typeof interest === 'string' && interest.trim())
-      : [];
+    if (typeof name === 'string' && name.trim()) {
+      updateData.name = name.trim().slice(0, 40);
+    }
+    if (typeof bio === 'string') {
+      updateData.bio = bio.slice(0, 150);
+    }
+    if (Array.isArray(interests)) {
+      updateData.interests = interests.filter((i) => typeof i === 'string' && i.trim());
+    }
+    if (Array.isArray(photos)) {
+      updateData.photos = photos.filter((p) => typeof p === 'string' && p.trim()).slice(0, 3);
+    }
+    if (typeof avatarBase64 === 'string' && avatarBase64.length > 0) {
+      updateData.avatar = avatarBase64.startsWith('data:image')
+        ? avatarBase64
+        : `data:image/jpeg;base64,${avatarBase64}`;
+    }
 
-    const updatedUser = await User.findByIdAndUpdate(
-      dbUserId,
-      {
-        bio: typeof bio === 'string' ? bio.slice(0, 150) : '',
-        interests: sanitizedInterests,
-        photos: sanitizedPhotos
-      },
-      { new: true }
-    );
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: 'Güncellenecek alan bulunamadı' });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(resolvedId, updateData, { new: true });
 
     if (!updatedUser) {
       return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
@@ -1319,6 +1328,7 @@ app.post('/api/users/update-profile', async (req, res) => {
     return res.status(500).json({ error: 'Profil güncellenemedi' });
   }
 });
+
 
 app.get('/api/users/:userId/following', async (req, res) => {
   const { userId } = req.params;
