@@ -469,13 +469,14 @@ io.on('connection', async (socket) => {
     io.to(partnerId).emit('camera_state', { from: socket.id, isOff: Boolean(isOff) });
   });
 
-  socket.on('private_call_request', async ({ callerId, targetUserId }) => {
+  socket.on('private_call_request', async (payload = {}) => {
     if (!consumeSocketEvent(socket, 'private_call_request', { limit: 5, windowMs: 60_000 })) {
       return socket.emit('error_message', { type: 'RATE_LIMIT', message: 'Çok fazla özel arama isteği gönderildi.' });
     }
     const me = userDetails.get(socket.id);
+    const { callerId, targetUserId, targetId } = payload;
     const normalizedCallerId = callerId ? String(callerId) : null;
-    const normalizedTargetUserId = targetUserId ? String(targetUserId) : null;
+    const normalizedTargetUserId = targetUserId ? String(targetUserId) : (targetId ? String(targetId) : null);
     const finalCallerId = normalizedCallerId || getDbIdBySocketId(socket.id);
 
     console.log("Private Call Request from:", finalCallerId, "to:", normalizedTargetUserId);
@@ -700,12 +701,16 @@ io.on('connection', async (socket) => {
     io.to(callerSocketId).emit('call_rejected');
   });
 
-  socket.on('cancel_private_call', ({ targetId, callerId }) => {
-    console.log(`[Private Call] Cancelled by ${callerId} for ${targetId}`);
+  socket.on('cancel_private_call', (payload = {}) => {
+    const { targetId, targetUserId, callerId } = payload;
+    const finalTargetId = targetId ? String(targetId) : (targetUserId ? String(targetUserId) : null);
+    const finalCallerId = callerId ? String(callerId) : getDbIdBySocketId(socket.id);
+
+    console.log(`[Private Call] Cancelled by ${finalCallerId} for ${finalTargetId}`);
 
     const targetSocketId =
-      connectedUsers.get(String(targetId)) ||
-      getConnectedSocketsByDbId(String(targetId))[0];
+      (finalTargetId ? connectedUsers.get(String(finalTargetId)) : null) ||
+      (finalTargetId ? getConnectedSocketsByDbId(String(finalTargetId))[0] : null);
 
     if (!targetSocketId) {
       return;
@@ -714,7 +719,7 @@ io.on('connection', async (socket) => {
     clearPendingPrivateCall(socket.id);
 
     io.to(targetSocketId).emit('private_call_cancelled', {
-      callerId
+      callerId: finalCallerId
     });
   });
 
@@ -729,8 +734,20 @@ io.on('connection', async (socket) => {
   });
 
   // --- EŞLEŞME (MATCH) MANTIĞI DÜZELTİLDİ ---
-  socket.on('find_partner', async ({ myGender, searchGender, selectedCountry }) => {
+  socket.on('find_partner', async (payload = {}, callback) => {
+      const { myGender, searchGender, selectedCountry } = payload;
+      const respond = (response) => {
+        if (typeof callback === 'function') {
+          try {
+            callback(response);
+          } catch (err) {
+            console.error('❌ find_partner callback error:', err);
+          }
+        }
+      };
+
       if (!consumeSocketEvent(socket, 'find_partner', { limit: 12, windowMs: 60_000 })) {
+        respond({ ok: false, code: 'RATE_LIMIT', message: 'Çok sık eşleşme aranıyor.' });
         return socket.emit('error_message', { type: 'RATE_LIMIT', message: 'Çok sık eşleşme aranıyor.' });
       }
       
@@ -738,7 +755,10 @@ io.on('connection', async (socket) => {
       const normalizedSearchGender = String(searchGender || 'all');
       
       const u = userDetails.get(socket.id);
-      if (!u) return;
+      if (!u) {
+        respond({ ok: false, code: 'USER_NOT_FOUND', message: 'Kullanıcı bağlantısı bulunamadı.' });
+        return;
+      }
 
       // GEÇERLİ ID KONTROL FONKSİYONU
       const isValidId = isValidObjectId;
@@ -752,6 +772,7 @@ io.on('connection', async (socket) => {
 
       if (totalCost > 0) {
           if (!isValidId(u.dbId)) {
+              respond({ ok: false, code: 'AUTH_REQUIRED', message: 'Filtre kullanmak için giriş yapmalısın!' });
               return socket.emit('error_message', { 
                   type: 'AUTH_REQUIRED', 
                   message: 'Filtre kullanmak için giriş yapmalısın!' 
@@ -761,6 +782,7 @@ io.on('connection', async (socket) => {
           try {
               const dbUser = await User.findById(u.dbId);
               if (!dbUser || dbUser.gems < totalCost) {
+                  respond({ ok: false, code: 'INSUFFICIENT_GEMS', message: `Yetersiz bakiye! Bu eşleşme için ${totalCost} Gem gerekiyor.` });
                   return socket.emit('error_message', { 
                       type: 'INSUFFICIENT_GEMS', 
                       message: `Yetersiz bakiye! Bu eşleşme için ${totalCost} Gem gerekiyor.` 
@@ -768,6 +790,7 @@ io.on('connection', async (socket) => {
               }
           } catch (err) {
               console.error("❌ Bakiye kontrol hatası:", err);
+              respond({ ok: false, code: 'BALANCE_CHECK_FAILED', message: 'Bakiye kontrolü yapılamadı.' });
               return;
           }
       }
@@ -907,6 +930,8 @@ io.on('connection', async (socket) => {
               myNewGems: pDbUser ? pDbUser.gems : 0 
           });
 
+          respond({ ok: true, status: 'matched' });
+
           return true;
         }
         return false;
@@ -924,6 +949,11 @@ io.on('connection', async (socket) => {
           totalCost: totalCost 
         });
         console.log(`⏳ [${socket.id.slice(0,6)}] Kuyruğa eklendi. (Gems henüz düşülmedi)`);
+        socket.emit('search_started', {
+          status: 'searching',
+          queued: true
+        });
+        respond({ ok: true, status: 'searching', queued: true });
       }
   });
 
