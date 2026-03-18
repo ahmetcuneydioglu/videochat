@@ -822,6 +822,9 @@ io.on('connection', async (socket) => {
           activeMatches.delete(socket.id);
           activeMatches.delete(existingPartner);
           if (global.liveMatches) global.liveMatches.delete(getMatchId(socket.id, existingPartner));
+          const displacedDetails = userDetails.get(existingPartner);
+          if (displacedDetails) displacedDetails.status = 'SEARCHING';
+          emitSearchStarted(existingPartner);
       }
 
       if (isSocketReservedForMatch(socket.id)) {
@@ -1063,6 +1066,7 @@ io.on('connection', async (socket) => {
     const partnerId = activeMatches.get(socket.id);
     if (partnerId) {
         const partnerDetails = userDetails.get(partnerId);
+        await saveMatchHistoryIfEligible(socket.id);
         await markUsersOnlineAfterCall(u?.dbId, partnerDetails?.dbId);
         io.to(partnerId).emit('partner_left_auto_next');
         activeMatches.delete(socket.id);
@@ -1117,9 +1121,9 @@ io.on('connection', async (socket) => {
       io.to(pendingCall.partnerSocketId).emit('target_unavailable');
     }
     const disconnectedDbId = getDbIdBySocketId(socket.id);
-    const partnerSocketId = activeMatches.get(socket.id);
-    const partnerDbId = partnerSocketId
-      ? getDbIdBySocketId(partnerSocketId) || userDetails.get(partnerSocketId)?.dbId
+    const partnerId = activeMatches.get(socket.id);
+    const partnerDbId = partnerId
+      ? getDbIdBySocketId(partnerId) || userDetails.get(partnerId)?.dbId
       : null;
     await markUsersOnlineAfterCall(partnerDbId);
     if (disconnectedDbId && connectedUsers.get(disconnectedDbId) === socket.id) {
@@ -1131,8 +1135,9 @@ io.on('connection', async (socket) => {
     }
     socketToDbUser.delete(socket.id);
     await saveMatchHistoryIfEligible(socket.id);
-    const partnerId = activeMatches.get(socket.id);
     if (partnerId) {
+      const pd = userDetails.get(partnerId);
+      if (pd) pd.status = 'SEARCHING';
       io.to(partnerId).emit('partner_left_auto_next');
       activeMatches.delete(partnerId);
       if (global.liveMatches) global.liveMatches.delete(getMatchId(socket.id, partnerId));
