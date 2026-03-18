@@ -24,6 +24,10 @@ const app = express();
 
 const allowedOrigins = ALLOWED_ORIGINS;
 
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ ok: true });
+});
+
 app.use(helmet());
 app.use(cors({ 
   origin: allowedOrigins, 

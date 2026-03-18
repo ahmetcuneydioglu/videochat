@@ -1,7 +1,11 @@
 const required = (name) => {
   const value = process.env[name];
   if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
+    const hint =
+      process.env.RENDER || process.env.RENDER_SERVICE_ID
+        ? ` Set ${name} in your Render service environment settings.`
+        : '';
+    throw new Error(`Missing required environment variable: ${name}.${hint}`);
   }
   return value;
 };
