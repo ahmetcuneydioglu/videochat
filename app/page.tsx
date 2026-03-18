@@ -165,16 +165,15 @@ export default function Home() {
 
     if (accessToken) {
       socket.auth = { token: accessToken };
-      if (socket.connected) {
-        socket.disconnect();
-      }
-      socket.connect();
     } else {
       socket.auth = {};
-      if (socket.connected) {
-        socket.disconnect();
-      }
     }
+
+    if (socket.connected) {
+      socket.disconnect();
+    }
+
+    socket.connect();
 
     return () => {
       socket.disconnect();
@@ -393,12 +392,6 @@ export default function Home() {
     setPartnerSessionLikes(0);
   };
 
-  const ensureAuthenticated = () => {
-    if (accessToken) return true;
-    setShowLoginRequired(true);
-    return false;
-  };
-
   // 🔥 iOS için H264 önceliklendirme
 function preferH264(sdp: string) {
   const lines = sdp.split('\r\n');
@@ -498,7 +491,6 @@ function preferH264(sdp: string) {
 
         const handleNext = () => {
           if (!isActiveRef.current) return;
-          if (!ensureAuthenticated()) return;
           cleanUpPeer();
           setIsSearching(true);
           socket.emit("next_user"); 
@@ -542,7 +534,6 @@ function preferH264(sdp: string) {
 
   const toggleActive = () => {
     const nextState = !isActive;
-    if (nextState && !ensureAuthenticated()) return;
     setIsActive(nextState);
     if (nextState) {
         setIsSearching(true);

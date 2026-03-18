@@ -17,7 +17,9 @@ async function socketAuthMiddleware(socket, next) {
   try {
     const token = extractSocketToken(socket);
     if (!token) {
-      return next(new Error('UNAUTHORIZED'));
+      socket.data.auth = null;
+      socket.data.user = null;
+      return next();
     }
 
     const payload = verifyAccessToken(token);
