@@ -224,6 +224,14 @@ async function markUsersOnlineAfterCall(...userIds) {
       .map((userId) => setUserPresenceStatus(String(userId), 'online'))
   );
 }
+function emitSearchStarted(socketId) {
+  if (!socketId) return;
+  io.to(socketId).emit('search_started', {
+    status: 'searching',
+    queued: false,
+    autoResumed: true
+  });
+}
 const clearPendingPrivateCall = (socketId) => {
   const pendingCall = pendingPrivateCalls.get(socketId);
   if (!pendingCall) return null;
@@ -1042,6 +1050,7 @@ io.on('connection', async (socket) => {
       
       const p = userDetails.get(partnerId);
       if (p) p.status = 'SEARCHING';
+      emitSearchStarted(partnerId);
     }
   });
 
@@ -1059,6 +1068,7 @@ io.on('connection', async (socket) => {
         activeMatches.delete(socket.id);
         activeMatches.delete(partnerId);
         if (global.liveMatches) global.liveMatches.delete(getMatchId(socket.id, partnerId));
+        emitSearchStarted(partnerId);
     }
   });
 
@@ -1126,6 +1136,7 @@ io.on('connection', async (socket) => {
       io.to(partnerId).emit('partner_left_auto_next');
       activeMatches.delete(partnerId);
       if (global.liveMatches) global.liveMatches.delete(getMatchId(socket.id, partnerId));
+      emitSearchStarted(partnerId);
     }
     userDetails.delete(socket.id);
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
