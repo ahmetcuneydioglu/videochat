@@ -21,6 +21,7 @@ const { verifyPurchaseWithStore } = require('./services/purchaseVerification');
 const { ALLOWED_ORIGINS, GOOGLE_CLIENT_IDS, MONGODB_URI, PORT, NODE_ENV } = require('./config/env');
 
 const app = express();
+app.set('trust proxy', 1);
 
 const allowedOrigins = ALLOWED_ORIGINS;
 
