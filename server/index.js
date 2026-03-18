@@ -77,6 +77,7 @@ let globalQueue = [];
 const activeMatches = new Map();
 const userDetails = new Map();
 const pendingPrivateCalls = new Map();
+const matchmakingReservations = new Set();
 const connectedUsers = new Map();
 const socketToDbUser = new Map();
 const onlineUsers = new Map();
@@ -171,6 +172,7 @@ const getConnectedSocketsByDbId = (dbId) =>
   connectedUsers.has(String(dbId)) ? [connectedUsers.get(String(dbId))] : [];
 const getDbIdBySocketId = (socketId) => socketToDbUser.get(socketId) || null;
 const isSocketBusy = (socketId) => activeMatches.has(socketId);
+const isSocketReservedForMatch = (socketId) => matchmakingReservations.has(socketId);
 const getUserPresenceStatus = (userId) => onlineUsers.get(String(userId))?.status || 'offline';
 async function notifyMatchedUsersStatusChange(userId, status) {
   if (!isValidObjectId(userId)) return;
@@ -814,6 +816,11 @@ io.on('connection', async (socket) => {
           if (global.liveMatches) global.liveMatches.delete(getMatchId(socket.id, existingPartner));
       }
 
+      if (isSocketReservedForMatch(socket.id)) {
+        respond({ ok: false, code: 'MATCH_IN_PROGRESS', message: 'Eşleşme zaten işleniyor.' });
+        return;
+      }
+
       globalQueue = globalQueue.filter(item => item.id !== socket.id);
       u.status = 'SEARCHING'; 
       u.myGender = myGender;
@@ -844,6 +851,14 @@ io.on('connection', async (socket) => {
 
         globalQueue.forEach((p, idx) => {
           if (p.id === socket.id) return;
+          if (isSocketBusy(p.id) || isSocketReservedForMatch(p.id)) {
+            console.log(`🚫 [${socket.id.slice(0,6)}] Candidate skipped because busy/reserved`, {
+              candidateSocketId: p.id,
+              busy: isSocketBusy(p.id),
+              reserved: isSocketReservedForMatch(p.id)
+            });
+            return;
+          }
 
           const pSearchGender = String(p.searchGender || 'all');
           const pSelectedCountry = normalizeCountry(p.selectedCountry || 'all');
@@ -889,6 +904,9 @@ io.on('connection', async (socket) => {
 
         if (bestIndex !== -1) {
           const partner = globalQueue[bestIndex];
+          globalQueue.splice(bestIndex, 1);
+          matchmakingReservations.add(socket.id);
+          matchmakingReservations.add(partner.id);
           
           // --- YARDIMCI FONKSİYON: Kullanıcıdan Gem Tahsil Et ---
           const chargeGems = async (userId, cost, userSocketId) => {
@@ -912,57 +930,60 @@ io.on('connection', async (socket) => {
           await chargeGems(u.dbId, totalCost, socket.id);
           await chargeGems(partner.dbId, partner.totalCost || 0, partner.id);
 
-          globalQueue.splice(bestIndex, 1);
-          
-          const {
-            matchId,
-            initiatorDetails: myDetails,
-            partnerDetails: pDetails
-          } = createLiveMatchRecord({
-            socketId: socket.id,
-            partnerSocketId: partner.id,
-            initiatorCountry: myCountryCode,
-            partnerCountry: partner.countryCode
-          });
+          try {
+            const {
+              matchId,
+              initiatorDetails: myDetails,
+              partnerDetails: pDetails
+            } = createLiveMatchRecord({
+              socketId: socket.id,
+              partnerSocketId: partner.id,
+              initiatorCountry: myCountryCode,
+              partnerCountry: partner.countryCode
+            });
 
-          await Promise.all([
-            setUserPresenceStatus(String(myDetails?.dbId || u.dbId), 'busy', socket.id),
-            setUserPresenceStatus(String(pDetails?.dbId || partner.dbId), 'busy', partner.id)
-          ]);
+            await Promise.all([
+              setUserPresenceStatus(String(myDetails?.dbId || u.dbId), 'busy', socket.id),
+              setUserPresenceStatus(String(pDetails?.dbId || partner.dbId), 'busy', partner.id)
+            ]);
 
-          console.log(`🎯 Live match created: ${matchId}`, {
-            user1DbId: myDetails?.dbId || u.dbId || null,
-            user2DbId: pDetails?.dbId || partner.dbId || null
-          });
+            console.log(`🎯 Live match created: ${matchId}`, {
+              user1DbId: myDetails?.dbId || u.dbId || null,
+              user2DbId: pDetails?.dbId || partner.dbId || null
+            });
 
-          let myDbUser = isValidId(u.dbId) ? await User.findById(u.dbId) : null;
-          let pDbUser = isValidId(partner.dbId) ? await User.findById(partner.dbId) : null;
+            let myDbUser = isValidId(u.dbId) ? await User.findById(u.dbId) : null;
+            let pDbUser = isValidId(partner.dbId) ? await User.findById(partner.dbId) : null;
 
-          io.to(socket.id).emit('partner_found', { 
-              partnerId: partner.id, 
-              initiator: true, 
-              country: partner.countryCode, 
-              partnerGender: partner.myGender, 
-              partnerLikes: pDetails ? pDetails.likes : 0,
-              partnerName: pDbUser ? pDbUser.name : "Stranger",
-              partnerAvatar: pDbUser ? pDbUser.avatar : null,
-              myNewGems: myDbUser ? myDbUser.gems : 0
-          });
+            io.to(socket.id).emit('partner_found', { 
+                partnerId: partner.id, 
+                initiator: true, 
+                country: partner.countryCode, 
+                partnerGender: partner.myGender, 
+                partnerLikes: pDetails ? pDetails.likes : 0,
+                partnerName: pDbUser ? pDbUser.name : "Stranger",
+                partnerAvatar: pDbUser ? pDbUser.avatar : null,
+                myNewGems: myDbUser ? myDbUser.gems : 0
+            });
 
-          io.to(partner.id).emit('partner_found', { 
-              partnerId: socket.id, 
-              initiator: false, 
-              country: myCountryCode, 
-              partnerGender: myGender, 
-              partnerLikes: myDetails ? myDetails.likes : 0,
-              partnerName: myDbUser ? myDbUser.name : "Stranger",
-              partnerAvatar: myDbUser ? myDbUser.avatar : null,
-              myNewGems: pDbUser ? pDbUser.gems : 0 
-          });
+            io.to(partner.id).emit('partner_found', { 
+                partnerId: socket.id, 
+                initiator: false, 
+                country: myCountryCode, 
+                partnerGender: myGender, 
+                partnerLikes: myDetails ? myDetails.likes : 0,
+                partnerName: myDbUser ? myDbUser.name : "Stranger",
+                partnerAvatar: myDbUser ? myDbUser.avatar : null,
+                myNewGems: pDbUser ? pDbUser.gems : 0 
+            });
 
-          respond({ ok: true, status: 'matched' });
+            respond({ ok: true, status: 'matched' });
 
-          return true;
+            return true;
+          } finally {
+            matchmakingReservations.delete(socket.id);
+            matchmakingReservations.delete(partner.id);
+          }
         }
         return false;
       };
@@ -1026,6 +1047,7 @@ io.on('connection', async (socket) => {
 
   socket.on('stop_search', async () => {
     console.log(`⏹️ [${socket.id.slice(0,6)}] Aramayı tamamen durdurdu.`);
+    matchmakingReservations.delete(socket.id);
     globalQueue = globalQueue.filter(u => u.id !== socket.id);
     const u = userDetails.get(socket.id);
     if (u) u.status = 'IDLE';
@@ -1079,6 +1101,7 @@ io.on('connection', async (socket) => {
 
   socket.on('disconnect', async () => {
     console.log(`❌ Bağlantı Koptu: [${socket.id.slice(0,6)}]`);
+    matchmakingReservations.delete(socket.id);
     const pendingCall = clearPendingPrivateCall(socket.id);
     if (pendingCall?.partnerSocketId) {
       io.to(pendingCall.partnerSocketId).emit('target_unavailable');
