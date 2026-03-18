@@ -23,7 +23,16 @@ const socket = io("https://videochat-1qxi.onrender.com", {
   reconnection: true,
   reconnectionAttempts: 5,
   reconnectionDelay: 2000,
-  query: typeof window !== "undefined" ? { dbUserId: localStorage.getItem("dbUserId") } : {}
+  autoConnect: false,
+  auth: (cb) => {
+    if (typeof window === "undefined") {
+      cb({});
+      return;
+    }
+
+    const accessToken = localStorage.getItem("accessToken");
+    cb(accessToken ? { token: accessToken } : {});
+  }
 });
 
 const GOOGLE_CLIENT_ID = "18397104529-p1kna8b71s0n5b6lv1oatk2vdrofp6c2.apps.googleusercontent.com";
@@ -90,6 +99,7 @@ export default function Home() {
   const [dbUserId, setDbUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   
   const [hasLiked, setHasLiked] = useState(false); 
   const [flyingHearts, setFlyingHearts] = useState<{ id: number; left: number; delay: number; color: string }[]>([]);
@@ -138,15 +148,37 @@ export default function Home() {
     const storedId = localStorage.getItem("dbUserId");
     const storedName = localStorage.getItem("userName"); 
     const storedAvatar = localStorage.getItem("userAvatar"); 
+    const storedAccessToken = localStorage.getItem("accessToken");
     if (storedId) setDbUserId(storedId);
     if (storedName) setUserName(storedName);
     if (storedAvatar) setUserAvatar(storedAvatar); 
+    if (storedAccessToken) setAccessToken(storedAccessToken);
     
     const setHeight = () => document.documentElement.style.setProperty('--vv-height', `${window.innerHeight}px`);
     setHeight();
     window.addEventListener('resize', setHeight);
     return () => window.removeEventListener('resize', setHeight);
   }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
+
+    if (accessToken) {
+      socket.auth = { token: accessToken };
+    } else {
+      socket.auth = {};
+    }
+
+    if (socket.connected) {
+      socket.disconnect();
+    }
+
+    socket.connect();
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [isMounted, accessToken]);
 
   useEffect(() => {
     mobileChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -163,9 +195,17 @@ export default function Home() {
         });
 
         // 2. Sayfa Yenilendiğinde Sunucudan Gelen "Giremezsin" Cevabı
-        socket.on('connection_refused', (data) => {
-            setBanDetails(data);
-        });
+    socket.on('connection_refused', (data) => {
+        setBanDetails(data);
+    });
+
+    socket.on("connect", () => {
+      console.log("🔌 Web socket connected:", socket.id);
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("❌ Socket connect error:", error.message);
+    });
 
     socket.on('partner_left_auto_next', () => {
         console.log("Partner ayrıldı, otomatik olarak bir sonrakine geçiliyor...");
@@ -238,6 +278,8 @@ export default function Home() {
         socket.off("partner_disconnected"); 
         socket.off("signal"); 
         socket.off("receive_like");
+        socket.off("connect");
+        socket.off("connect_error");
         socket.off("chat_message", handleIncomingMessage); // Cleanup
     };
   }, [allCountries]); 
@@ -595,20 +637,37 @@ function preferH264(sdp: string) {
               <div className="flex justify-center scale-110 mb-4">
                 <GoogleLogin
                   onSuccess={async (credentialResponse) => {
-                    const res = await fetch("https://videochat-1qxi.onrender.com/api/auth/social-login", {
-                      method: "POST", headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ token: credentialResponse.credential }) 
-                    });
-                    const userData = await res.json();
-                    setDbUserId(userData._id);
-                    setUserName(userData.name); 
-                    setUserAvatar(userData.avatar); 
-                    localStorage.setItem("dbUserId", userData._id);
-                    localStorage.setItem("userName", userData.name); 
-                    localStorage.setItem("userAvatar", userData.avatar);
-                    socket.emit("user_logged_in", { dbUserId: userData._id });
-                    setShowLoginRequired(false);
-                    alert(`Welcome ${userData.name}!`);
+                    try {
+                      const res = await fetch("https://videochat-1qxi.onrender.com/api/auth/social-login", {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ token: credentialResponse.credential }) 
+                      });
+                      const responseData = await res.json();
+                      const userData = responseData.user || responseData;
+                      const nextAccessToken =
+                        responseData.accessToken ||
+                        responseData.token ||
+                        responseData.jwt ||
+                        null;
+
+                      if (!res.ok || !userData?._id || !nextAccessToken) {
+                        throw new Error(responseData?.error || "Login failed");
+                      }
+
+                      setDbUserId(userData._id);
+                      setUserName(userData.name); 
+                      setUserAvatar(userData.avatar); 
+                      setAccessToken(nextAccessToken);
+                      localStorage.setItem("dbUserId", userData._id);
+                      localStorage.setItem("userName", userData.name); 
+                      localStorage.setItem("userAvatar", userData.avatar);
+                      localStorage.setItem("accessToken", nextAccessToken);
+                      setShowLoginRequired(false);
+                      alert(`Welcome ${userData.name}!`);
+                    } catch (error) {
+                      console.error("Google login error:", error);
+                      alert("Login failed. Please try again.");
+                    }
                   }}
                   onError={() => console.log('Login Failed')}
                   theme="filled_blue"
@@ -1005,6 +1064,7 @@ function preferH264(sdp: string) {
                 <div 
                   onClick={() => {
                     localStorage.clear();
+                    setAccessToken(null);
                     window.location.reload();
                   }}
                   className="flex items-center justify-between p-4 bg-red-600/10 rounded-2xl hover:bg-red-600/20 transition-colors cursor-pointer group"
