@@ -796,6 +796,14 @@ io.on('connection', async (socket) => {
       }
 
       console.log(`🔍 [${socket.id.slice(0,6)}] Eşleşme arıyor... (Kendi: ${myGender} | Filtre: ${normalizedSearchGender} - ${normalizedSelectedCountry})`);
+      console.log(`🧾 [${socket.id.slice(0,6)}] Queue before match attempt:`, globalQueue.map((item) => ({
+        id: item.id,
+        myGender: item.myGender,
+        searchGender: item.searchGender,
+        countryCode: item.countryCode,
+        selectedCountry: item.selectedCountry,
+        dbId: item.dbId || null
+      })));
       
       const existingPartner = activeMatches.get(socket.id);
       if (existingPartner) {
@@ -848,9 +856,30 @@ io.on('connection', async (socket) => {
             (normalizedSelectedCountry === 'all' || normalizedSelectedCountry === pCountryCode) &&
             (pSelectedCountry === 'all' || pSelectedCountry === myCountryCode);
 
-          if (!genderMatch || !countryMatch) return;
+          if (!genderMatch || !countryMatch) {
+            console.log(`🚫 [${socket.id.slice(0,6)}] Candidate rejected`, {
+              candidateSocketId: p.id,
+              candidateDbId: p.dbId || null,
+              myGender,
+              mySearchGender: normalizedSearchGender,
+              myCountryCode,
+              mySelectedCountry: normalizedSelectedCountry,
+              candidateGender: p.myGender,
+              candidateSearchGender: pSearchGender,
+              candidateCountryCode: pCountryCode,
+              candidateSelectedCountry: pSelectedCountry,
+              genderMatch,
+              countryMatch
+            });
+            return;
+          }
 
           const priority = getCandidatePriority(p);
+          console.log(`✅ [${socket.id.slice(0,6)}] Candidate accepted`, {
+            candidateSocketId: p.id,
+            candidateDbId: p.dbId || null,
+            priority
+          });
           if (priority < bestPriority) {
             bestPriority = priority;
             bestIndex = idx;
@@ -949,6 +978,14 @@ io.on('connection', async (socket) => {
           totalCost: totalCost 
         });
         console.log(`⏳ [${socket.id.slice(0,6)}] Kuyruğa eklendi. (Gems henüz düşülmedi)`);
+        console.log(`📦 Queue after enqueue:`, globalQueue.map((item) => ({
+          id: item.id,
+          myGender: item.myGender,
+          searchGender: item.searchGender,
+          countryCode: item.countryCode,
+          selectedCountry: item.selectedCountry,
+          dbId: item.dbId || null
+        })));
         socket.emit('search_started', {
           status: 'searching',
           queued: true
