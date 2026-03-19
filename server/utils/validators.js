@@ -11,6 +11,8 @@ const updateProfileSchema = z.object({
   bio: z.string().max(150).optional(),
   interests: z.array(z.string().trim().min(1).max(30)).max(20).optional(),
   photos: z.array(z.string().trim().min(1).max(2_000_000)).max(3).optional(),
+  gender: z.string().trim().max(50).optional(),
+  birthDate: z.string().trim().max(20).optional(),
   avatarBase64: z.string().max(2_000_000).optional(),
 });
 

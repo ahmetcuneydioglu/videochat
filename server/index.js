@@ -1455,6 +1455,12 @@ app.post('/api/users/update-profile', requireAuth, userActionRateLimit, async (r
         ? parsed.avatarBase64
         : `data:image/jpeg;base64,${parsed.avatarBase64}`;
     }
+    if (typeof parsed.gender === 'string' && parsed.gender.trim()) {
+      updateData.gender = parsed.gender.trim();
+    }
+    if (typeof parsed.birthDate === 'string' && parsed.birthDate.trim()) {
+      updateData.birthDate = parsed.birthDate.trim();
+    }
 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ error: 'Güncellenecek alan bulunamadı' });
