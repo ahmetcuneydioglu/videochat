@@ -1505,6 +1505,33 @@ app.get('/api/users/:userId/following', requireAuth, requireSelfOrAdmin('params'
   }
 });
 
+app.get('/api/users/:userId/followers', requireAuth, requireSelfOrAdmin('params', 'userId'), userActionRateLimit, async (req, res) => {
+  const { userId } = req.params;
+  try {
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: 'Geçersiz kullanıcı ID formatı' });
+    }
+    const followerRecords = await Follow.find({ following: userId })
+      .populate('follower', 'name avatar country countryFlag');
+    const followerUsers = followerRecords
+      .map((record) => record.follower)
+      .filter(Boolean)
+      .map((user) => ({
+        id: user._id,
+        name: user.name || 'Stranger',
+        avatar: user.avatar || null,
+        country: user.country || null,
+        countryFlag: user.countryFlag || null,
+        isOnline: getConnectedSocketsByDbId(user._id).length > 0,
+        isFollowing: false
+      }));
+    res.json(followerUsers);
+  } catch (err) {
+    console.error('❌ Followers listesi getirilemedi:', err);
+    res.status(500).json({ error: 'Takipçiler getirilemedi' });
+  }
+});
+
 app.get('/api/users/:userId/history', requireAuth, requireSelfOrAdmin('params', 'userId'), userActionRateLimit, async (req, res) => {
   const { userId } = req.params;
 
