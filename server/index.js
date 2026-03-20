@@ -136,6 +136,21 @@ app.post('/api/auth/social-login', authRateLimit, async (req, res) => {
   }
 });
 
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.auth.userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+
+    return res.json({ user });
+  } catch (err) {
+    console.error('❌ Me endpoint hatası:', err);
+    return res.status(500).json({ error: 'Kullanıcı bilgisi alınamadı' });
+  }
+});
+
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
@@ -1466,13 +1481,26 @@ app.post('/api/users/update-profile', requireAuth, userActionRateLimit, async (r
       return res.status(400).json({ error: 'Güncellenecek alan bulunamadı' });
     }
 
-    const updatedUser = await User.findByIdAndUpdate(resolvedId, updateData, { new: true });
+    const user = await User.findById(resolvedId);
 
-    if (!updatedUser) {
+    if (!user) {
       return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
     }
 
-    return res.json(updatedUser);
+    if (Object.prototype.hasOwnProperty.call(updateData, 'name')) user.name = updateData.name;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'bio')) user.bio = updateData.bio;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'interests')) {
+      // Always replace the full list; never merge with existing interests.
+      user.interests = [...updateData.interests];
+    }
+    if (Object.prototype.hasOwnProperty.call(updateData, 'photos')) user.photos = updateData.photos;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'avatar')) user.avatar = updateData.avatar;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'gender')) user.gender = updateData.gender;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'birthDate')) user.birthDate = updateData.birthDate;
+
+    await user.save();
+
+    return res.json(user);
   } catch (err) {
     console.error('❌ Profil güncelleme hatası:', err);
     return res.status(500).json({ error: 'Profil güncellenemedi' });
