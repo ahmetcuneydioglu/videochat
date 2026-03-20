@@ -1481,26 +1481,22 @@ app.post('/api/users/update-profile', requireAuth, userActionRateLimit, async (r
       return res.status(400).json({ error: 'Güncellenecek alan bulunamadı' });
     }
 
-    const user = await User.findById(resolvedId);
+    if (Object.prototype.hasOwnProperty.call(updateData, 'interests')) {
+      // Always replace the full list; never merge with existing interests.
+      updateData.interests = [...updateData.interests];
+    }
 
-    if (!user) {
+    const updatedUser = await User.findByIdAndUpdate(
+      resolvedId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedUser) {
       return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
     }
 
-    if (Object.prototype.hasOwnProperty.call(updateData, 'name')) user.name = updateData.name;
-    if (Object.prototype.hasOwnProperty.call(updateData, 'bio')) user.bio = updateData.bio;
-    if (Object.prototype.hasOwnProperty.call(updateData, 'interests')) {
-      // Always replace the full list; never merge with existing interests.
-      user.interests = [...updateData.interests];
-    }
-    if (Object.prototype.hasOwnProperty.call(updateData, 'photos')) user.photos = updateData.photos;
-    if (Object.prototype.hasOwnProperty.call(updateData, 'avatar')) user.avatar = updateData.avatar;
-    if (Object.prototype.hasOwnProperty.call(updateData, 'gender')) user.gender = updateData.gender;
-    if (Object.prototype.hasOwnProperty.call(updateData, 'birthDate')) user.birthDate = updateData.birthDate;
-
-    await user.save();
-
-    return res.json(user);
+    return res.json(updatedUser);
   } catch (err) {
     console.error('❌ Profil güncelleme hatası:', err);
     return res.status(500).json({ error: 'Profil güncellenemedi' });
